@@ -1,0 +1,5 @@
+condition,n_prompts,refusal_substring_rate,refusal_token_logit_margin,generated_text_saved,circuit_requested_k,circuit_retained_edges,circuit_path
+normal,8,0.875,-3.2177613973617554,False,1000,668,results/rq1/circuits/eapig_top_1000.json
+refusal_direction_ablated,8,0.0,-15.84112012386322,False,1000,668,results/rq1/circuits/eapig_top_1000.json
+circuit_only,8,0.75,-3.475135087966919,False,1000,668,results/rq1/circuits/eapig_top_1000.json
+circuit_ablated,8,0.0,-13.38798177242279,False,1000,668,results/rq1/circuits/eapig_top_1000.json
