@@ -203,6 +203,10 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# One-time RQ1 reference checkout; intentionally not a runtime dependency or
+# nested Git submodule.
+/external/refusal_direction/
+
 # Ruff stuff:
 .ruff_cache/
 

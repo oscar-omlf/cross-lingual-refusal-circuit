@@ -1,0 +1,5 @@
+split,condition,n_prompts,refusal_substring_rate,first_token_refusal_metric,generated_text_saved
+val,harmful_normal,32,1.00000,5.561782,False
+val,harmful_direction_ablated,32,0.00000,-8.057405,False
+val,harmless_normal,32,0.00000,-11.115206,False
+val,harmless_direction_added,32,0.96875,4.647276,False
