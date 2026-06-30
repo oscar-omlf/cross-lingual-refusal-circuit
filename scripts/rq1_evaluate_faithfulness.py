@@ -16,6 +16,12 @@ def parse_args():
     parser.add_argument("--dtype", default="bfloat16")
     parser.add_argument("--split", choices=("train", "val", "test"), default="test")
     parser.add_argument("--num-prompts", type=int, default=64)
+    parser.add_argument(
+        "--prompt-offset",
+        type=int,
+        default=0,
+        help="Skip this many harmful examples before taking --num-prompts.",
+    )
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--max-length", type=int, default=512)
     parser.add_argument("--k-values", type=int, nargs="+", default=(50, 100, 200, 500, 1000, 2000))
@@ -38,7 +44,17 @@ def parse_args():
     return parser.parse_args()
 
 
-def _metric_row(method, requested_k, retained_edges, seed, conditions, refusal_ids, answer_ids):
+def _metric_row(
+    method,
+    requested_k,
+    retained_edges,
+    seed,
+    conditions,
+    refusal_ids,
+    answer_ids,
+    *,
+    prompt_offset: int,
+):
     from refusal_circuit.circuit import (
         first_token_logit_margin,
         normalized_faithfulness,
@@ -54,6 +70,8 @@ def _metric_row(method, requested_k, retained_edges, seed, conditions, refusal_i
         "requested_k": requested_k,
         "retained_edges": retained_edges,
         "random_seed": seed,
+        "n_prompts": len(clean),
+        "prompt_offset": prompt_offset,
         "m_clean": clean.mean().item(),
         "m_corrupt": corrupt.mean().item(),
         "m_circuit_only": circuit_only.mean().item(),
@@ -114,12 +132,11 @@ def main():
     target_layer = int(metadata["layer"])
     target_hook = metadata["target_hook"]
     target_position = int(metadata["position"])
+    harmful_rows = load_processed_split(args.split, "harmful", data_dir=args.data_dir)
+    selected_rows = harmful_rows[args.prompt_offset : args.prompt_offset + args.num_prompts]
     prompts = format_instructions(
         model.tokenizer,
-        [
-            row["instruction"]
-            for row in load_processed_split(args.split, "harmful", data_dir=args.data_dir)[: args.num_prompts]
-        ],
+        [row["instruction"] for row in selected_rows],
     )
     refusal_ids = [int(value) for value in metadata.get("refusal_token_ids", [])]
     if not refusal_ids:
@@ -149,7 +166,14 @@ def main():
                 max_length=args.max_length,
             )
             faith, necessity = _metric_row(
-                method, requested_k, len(edge_names), None, conditions, refusal_ids, answer_ids
+                method,
+                requested_k,
+                len(edge_names),
+                None,
+                conditions,
+                refusal_ids,
+                answer_ids,
+                prompt_offset=args.prompt_offset,
             )
             faithfulness_rows.append(faith)
             necessity_rows.append(necessity)
@@ -188,6 +212,7 @@ def main():
                     random_conditions,
                     refusal_ids,
                     answer_ids,
+                    prompt_offset=args.prompt_offset,
                 )
                 faithfulness_rows.append(faith)
                 necessity_rows.append(necessity)
