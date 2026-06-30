@@ -47,7 +47,16 @@ def parse_args() -> argparse.Namespace:
         default=8,
         help="Number of prompts per label to generate/classify with WildGuard.",
     )
-    parser.add_argument("--max-new-tokens", type=int, default=32)
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=32,
+        help=(
+            "Number of tokens to generate before WildGuard classification. "
+            "Must be at least 32; shorter benign fragments caused false "
+            "refusal labels in the validation pilot."
+        ),
+    )
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--classifier-batch-size", type=int, default=4)
     parser.add_argument("--classifier-max-length", type=int, default=2048)
@@ -190,6 +199,8 @@ def _generate_records(args: argparse.Namespace) -> tuple[list[dict], list[dict],
                         "local_generation_index": local_index,
                         "row_id": source_row.get("id", ""),
                         "parallel_id": source_row.get("parallel_id", ""),
+                        "generated_token_count": len(completion_ids),
+                        "hit_max_new_tokens": len(completion_ids) >= args.max_new_tokens,
                         "prompt": raw_instruction,
                         "response": completion,
                     }
@@ -325,6 +336,13 @@ def main() -> None:
     import pandas as pd
 
     from refusal_circuit.paths import write_json
+
+    if args.max_new_tokens < 32:
+        raise ValueError(
+            "--max-new-tokens must be at least 32 for WildGuard validation. "
+            "A harmless pilot with 8-token truncated responses produced a "
+            "false refusal label."
+        )
 
     output_dir = _output_dir(args)
     output_dir.mkdir(parents=True, exist_ok=True)

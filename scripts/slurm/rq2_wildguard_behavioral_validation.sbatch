@@ -28,6 +28,11 @@ max_new_tokens="${MAX_NEW_TOKENS:-32}"
 classifier_batch_size="${CLASSIFIER_BATCH_SIZE:-4}"
 output_dir="${OUTPUT_DIR:-}"
 
+if (( max_new_tokens < 32 )); then
+  echo "MAX_NEW_TOKENS must be >=32 for WildGuard validation; shorter benign fragments caused false refusal labels." >&2
+  exit 2
+fi
+
 cd "${repo_root}"
 mkdir -p logs/rq2
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
