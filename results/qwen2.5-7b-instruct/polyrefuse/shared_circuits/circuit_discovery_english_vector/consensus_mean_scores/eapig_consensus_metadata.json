@@ -1,0 +1,17 @@
+{
+  "dataset": "PolyRefuse",
+  "discovery_subdir": "circuit_discovery_english_vector",
+  "languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "metadata_subpath": "shared_metrics/english_vector/metadata.json",
+  "method": "eapig",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "normalization": "l1_abs",
+  "selection": "average normalized signed edge scores, then paper greedy frontier",
+  "target_layer": 15,
+  "target_position": -2
+}

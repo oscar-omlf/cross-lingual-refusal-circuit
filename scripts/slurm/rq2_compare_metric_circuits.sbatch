@@ -15,9 +15,9 @@ module load Miniforge3/25.3.0-3
 
 repo_root="${SLURM_SUBMIT_DIR}"
 env_prefix="${repo_root}/.conda/rq1-refusal-circuit"
-languages="${LANGUAGES:-en de ru}"
+languages="${LANGUAGES:-en de zh th}"
 metric_name="${METRIC_NAME:-english_vector}"
-k_values="${K_VALUES:-25 50 100 200 500 1000 2000}"
+k_values="${K_VALUES:-10 25 50 100 200 500 1000 2000}"
 circuits_subdir="${CIRCUITS_SUBDIR:-circuits_greedy_no_parent_prune_small_to_large}"
 
 cd "${repo_root}"

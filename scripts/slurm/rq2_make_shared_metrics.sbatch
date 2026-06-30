@@ -15,9 +15,9 @@ module load Miniforge3/25.3.0-3
 
 repo_root="${SLURM_SUBMIT_DIR}"
 env_prefix="${repo_root}/.conda/rq1-refusal-circuit"
-languages="${LANGUAGES:-en de ru}"
+languages="${LANGUAGES:-en de zh th}"
 metrics="${METRICS:-english_vector common_mean}"
-direction_subdir="${DIRECTION_SUBDIR:-direction}"
+direction_subdir="${DIRECTION_SUBDIR:-direction_paper_kl0p2}"
 
 cd "${repo_root}"
 mkdir -p logs/rq2

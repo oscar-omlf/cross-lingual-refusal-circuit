@@ -1,0 +1,17 @@
+{
+  "circuit_files": [],
+  "circuit_selection": "greedy backwards from terminal by absolute score, then recursive pruning",
+  "corrupt_baseline": "same harmful prompt with global refusal-direction ablation",
+  "data_dir": "data/processed/qwen2.5-7b-instruct/polyrefuse/en",
+  "graph_granularity": "attention heads and MLPs; Q/K/V input edges retained",
+  "ig_steps": 5,
+  "input_source": "blocks.0.hook_resid_pre (post-ablation in corrupt run)",
+  "interpolation_path": "global refusal-direction ablation strength alpha=0 (corrupt) to alpha=1 (clean); intervention-aware EAP-IG extension",
+  "method": "eapig",
+  "metric": "h[layer, position]^T unit_refusal_direction",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "n_prompts": 64,
+  "paper_circuit_jsons_skipped": true,
+  "split": "train",
+  "target_hook": "blocks.15.hook_resid_pre"
+}
