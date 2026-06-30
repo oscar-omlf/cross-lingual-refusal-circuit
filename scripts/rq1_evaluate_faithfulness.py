@@ -21,10 +21,16 @@ def parse_args():
     parser.add_argument("--k-values", type=int, nargs="+", default=(50, 100, 200, 500, 1000, 2000))
     parser.add_argument("--methods", nargs="+", choices=("eapig", "eap"), default=("eapig", "eap"))
     parser.add_argument("--random-seeds", type=int, nargs="+", default=(0, 1, 2, 3, 4))
-    parser.add_argument("--direction-path", type=Path, default=Path("results/rq1/refusal_direction.pt"))
-    parser.add_argument("--metadata-path", type=Path, default=Path("results/rq1/refusal_direction_metadata.json"))
-    parser.add_argument("--circuits-dir", type=Path, default=Path("results/rq1/circuits"))
-    parser.add_argument("--output-dir", type=Path, default=Path("results/rq1"))
+    parser.add_argument("--direction-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction.pt"))
+    parser.add_argument("--metadata-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction_metadata.json"))
+    parser.add_argument("--circuits-dir", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/circuits"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/gemma-2-2b-it/en/rq1"))
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data/processed/gemma-2-2b-it/en/rq1"),
+        help="Processed-data namespace used for circuit evaluation.",
+    )
     parser.add_argument("--skip-behaviour", action="store_true")
     parser.add_argument("--behaviour-k", type=int, default=500)
     parser.add_argument("--behaviour-prompts", type=int, default=8)
@@ -110,9 +116,14 @@ def main():
     target_position = int(metadata["position"])
     prompts = format_instructions(
         model.tokenizer,
-        [row["instruction"] for row in load_processed_split(args.split, "harmful")[: args.num_prompts]],
+        [
+            row["instruction"]
+            for row in load_processed_split(args.split, "harmful", data_dir=args.data_dir)[: args.num_prompts]
+        ],
     )
-    refusal_ids = first_token_ids(model.tokenizer, REFUSAL_PREFIXES)
+    refusal_ids = [int(value) for value in metadata.get("refusal_token_ids", [])]
+    if not refusal_ids:
+        refusal_ids = first_token_ids(model.tokenizer, REFUSAL_PREFIXES)
     answer_ids = first_token_ids(model.tokenizer, DEFAULT_ANSWER_STARTS)
 
     faithfulness_rows = []

@@ -20,4 +20,4 @@ env_prefix="${repo_root}/.conda/rq1-refusal-circuit"
 export HF_TOKEN
 conda run --no-capture-output --prefix "${env_prefix}" python scripts/rq1_run_eapig.py \
   --split train --num-prompts 64 --ig-steps 5 --methods eapig eap \
-  --output-dir results/rq1/heldout_train
+  --output-dir results/gemma-2-2b-it/en/rq1/heldout_train

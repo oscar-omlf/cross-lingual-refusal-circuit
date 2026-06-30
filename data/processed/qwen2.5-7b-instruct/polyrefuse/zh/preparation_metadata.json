@@ -1,0 +1,94 @@
+{
+  "allow_filter_shortfall_splits": [
+    "val",
+    "test"
+  ],
+  "dataset": "PolyRefuse",
+  "filter_protocol": "Wang et al. Qwen2.5-7B first-token refusal log-odds: harmful > 0, harmless < 0.",
+  "language": "zh",
+  "min_filter_fraction": 0.75,
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "model_slug": "qwen2.5-7b-instruct",
+  "refusal_token_ids": [
+    35946
+  ],
+  "refusal_token_protocol": "paper_qwen7b",
+  "source_commit": "985169df2a0b1ba56a95c65d5f60e228f12be4a1",
+  "source_files": {
+    "test/harmful": "external/multilingual_refusal/PolyRefuse/harmful_test_translated_zh.json",
+    "test/harmless": "external/multilingual_refusal/dataset/splits/harmless_test_200_sampled.json",
+    "train/harmful": "external/multilingual_refusal/PolyRefuse/harmful_train_translated_zh.json",
+    "train/harmless": "external/multilingual_refusal/PolyRefuse/harmless_train_translated_zh.json",
+    "val/harmful": "external/multilingual_refusal/PolyRefuse/harmful_val_translated_zh.json",
+    "val/harmless": "external/multilingual_refusal/PolyRefuse/harmless_val_translated_zh.json"
+  },
+  "source_repository": "https://github.com/mainlp/Multilingual-Refusal",
+  "split_counts": {
+    "test": {
+      "harmful": {
+        "length_eligible_count": 572,
+        "mean_score_before_filter": 0.5571411260480218,
+        "requested_count": 64,
+        "score_negative_count": 137,
+        "score_positive_count": 435,
+        "selected_count": 64,
+        "selection_shortfall": 0,
+        "source_count": 572
+      },
+      "harmless": {
+        "length_eligible_count": 200,
+        "mean_score_before_filter": -18.40566873550415,
+        "requested_count": 64,
+        "score_negative_count": 200,
+        "score_positive_count": 0,
+        "selected_count": 64,
+        "selection_shortfall": 0,
+        "source_count": 200
+      }
+    },
+    "train": {
+      "harmful": {
+        "length_eligible_count": 260,
+        "mean_score_before_filter": 1.5150972358810788,
+        "requested_count": 128,
+        "score_negative_count": 47,
+        "score_positive_count": 213,
+        "selected_count": 128,
+        "selection_shortfall": 0,
+        "source_count": 260
+      },
+      "harmless": {
+        "length_eligible_count": 200,
+        "mean_score_before_filter": -16.120204102694988,
+        "requested_count": 128,
+        "score_negative_count": 200,
+        "score_positive_count": 0,
+        "selected_count": 128,
+        "selection_shortfall": 0,
+        "source_count": 200
+      }
+    },
+    "val": {
+      "harmful": {
+        "length_eligible_count": 39,
+        "mean_score_before_filter": -0.04683551851373453,
+        "requested_count": 32,
+        "score_negative_count": 9,
+        "score_positive_count": 30,
+        "selected_count": 30,
+        "selection_shortfall": 2,
+        "source_count": 39
+      },
+      "harmless": {
+        "length_eligible_count": 200,
+        "mean_score_before_filter": -15.716304582357406,
+        "requested_count": 32,
+        "score_negative_count": 200,
+        "score_positive_count": 0,
+        "selected_count": 32,
+        "selection_shortfall": 0,
+        "source_count": 200
+      }
+    }
+  }
+}

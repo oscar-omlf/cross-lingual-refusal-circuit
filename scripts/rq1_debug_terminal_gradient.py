@@ -23,9 +23,9 @@ def parse_args():
     parser.add_argument("--dtype", default="bfloat16")
     parser.add_argument("--split", choices=("train", "val", "test"), default="test")
     parser.add_argument("--max-length", type=int, default=512)
-    parser.add_argument("--direction-path", type=Path, default=Path("results/rq1/refusal_direction.pt"))
-    parser.add_argument("--metadata-path", type=Path, default=Path("results/rq1/refusal_direction_metadata.json"))
-    parser.add_argument("--output-path", type=Path, default=Path("results/rq1/terminal_gradient_debug.json"))
+    parser.add_argument("--direction-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction.pt"))
+    parser.add_argument("--metadata-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction_metadata.json"))
+    parser.add_argument("--output-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/terminal_gradient_debug.json"))
     return parser.parse_args()
 
 

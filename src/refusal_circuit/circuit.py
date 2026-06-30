@@ -20,11 +20,12 @@ def _batches(items: list[str], batch_size: int):
 
 def _project_away(activations: torch.Tensor, direction: torch.Tensor | None) -> torch.Tensor:
     """Return an activation with a direction removed, without mutating the run."""
+    value = activations.detach().float()
     if direction is None:
-        return activations.detach().clone()
-    vector = direction.to(activations)
+        return value.clone()
+    vector = direction.to(device=value.device, dtype=torch.float32)
     vector = vector / vector.norm().clamp_min(1e-8)
-    projected = activations - torch.einsum("...d,d->...", activations, vector).unsqueeze(-1) * vector
+    projected = value - torch.einsum("...d,d->...", value, vector).unsqueeze(-1) * vector
     return projected.detach().clone()
 
 

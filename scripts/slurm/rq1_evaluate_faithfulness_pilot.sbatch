@@ -21,4 +21,4 @@ env_prefix="${repo_root}/.conda/rq1-refusal-circuit"
 export HF_TOKEN
 conda run --no-capture-output --prefix "${env_prefix}" python scripts/rq1_evaluate_faithfulness.py \
   --num-prompts 8 --batch-size 4 --k-values 500 --random-seeds 0 \
-  --skip-behaviour --output-dir results/rq1/faithfulness_pilot
+  --skip-behaviour --output-dir results/gemma-2-2b-it/en/rq1/faithfulness_pilot

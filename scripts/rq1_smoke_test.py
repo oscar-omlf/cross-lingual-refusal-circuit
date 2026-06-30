@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load Gemma-2 through the exact RQ1 path and run one formatted prompt."""
+"""Load an instruction-tuned model through the experiment path and run one prompt."""
 
 from __future__ import annotations
 
@@ -16,7 +16,13 @@ def main():
     args = parser.parse_args()
 
     try:
-        from refusal_circuit.model import format_instruction, load_model, tokenize_prompts
+        from refusal_circuit.graph import make_projection_graph
+        from refusal_circuit.model import (
+            format_instruction,
+            load_model,
+            post_instruction_positions,
+            tokenize_prompts,
+        )
     except ModuleNotFoundError as exc:
         raise SystemExit(
             "Smoke test blocked: the RQ1 environment is not installed. "
@@ -27,6 +33,7 @@ def main():
     prompt = format_instruction(model.tokenizer, "Say hello in one sentence.")
     tokens, attention_mask = tokenize_prompts(model, [prompt])
     logits = model(tokens, attention_mask=attention_mask)
+    graph = make_projection_graph(model, target_layer=min(1, model.cfg.n_layers - 1))
     assistant_start_token_id = int(tokens[0, -1].item())
     token_tail_ids = tokens[0, -8:].tolist()
     print(
@@ -40,6 +47,8 @@ def main():
             "assistant_start_token_id": assistant_start_token_id,
             "assistant_start_token": model.tokenizer.convert_ids_to_tokens(assistant_start_token_id),
             "prompt_token_tail": model.tokenizer.convert_ids_to_tokens(token_tail_ids),
+            "post_instruction_positions": post_instruction_positions(model.tokenizer),
+            "eap_graph": {"target_layer": min(1, model.cfg.n_layers - 1), "n_edges": len(graph.edges)},
             "eap_hooks": {
                 "split_qkv": bool(model.cfg.use_split_qkv_input),
                 "attn_result": bool(model.cfg.use_attn_result),

@@ -1,0 +1,21 @@
+{
+  "all_anchor_pairs_meet_heuristic": true,
+  "anchor_cosine_mean": 0.9548032085100809,
+  "anchor_cosine_min": 0.9350512027740479,
+  "anchor_language": "en",
+  "anchor_layer": 15,
+  "anchor_position": -2,
+  "dataset": "PolyRefuse",
+  "descriptive_comparison": "cosine between each language's individually selected intervention site",
+  "direction_subdir": "direction_paper_kl0p2",
+  "interpretation": "The threshold is a transparent operational heuristic, not proof of identity. Direction transfer and circuit transfer are evaluated separately.",
+  "languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "primary_comparison": "cosine between language-local DIM vectors at a common site",
+  "same_direction_heuristic_threshold": 0.9
+}

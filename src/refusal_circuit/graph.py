@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import heapq
+import itertools
 from pathlib import Path
 
 from .paths import ensure_parent, write_json
@@ -72,7 +74,7 @@ def sorted_edges(graph) -> list:
     return sorted(graph.edges.values(), key=lambda edge: abs(float(edge.score)), reverse=True)
 
 
-def paper_greedy_edges(graph, requested_k: int) -> list:
+def paper_greedy_edges(graph, requested_k: int, *, prune_parentless: bool = True) -> list:
     """Select a connected circuit using Hanna et al.'s greedy procedure.
 
     Starting at the terminal metric node, repeatedly add the highest absolute
@@ -83,8 +85,43 @@ def paper_greedy_edges(graph, requested_k: int) -> list:
     """
     if requested_k <= 0:
         raise ValueError(f"requested_k must be positive, got {requested_k}.")
-    graph.apply_greedy(requested_k, reset=True, absolute=True)
-    graph.prune_dead_nodes()
+    for node in graph.nodes.values():
+        node.in_graph = False
+    for edge in graph.edges.values():
+        edge.in_graph = False
+    graph.nodes["logits"].in_graph = True
+
+    # The upstream ``Graph.apply_greedy`` implements the right algorithm but
+    # repeatedly nests ``heapq.merge`` calls.  On larger Qwen graphs this can
+    # hit Python's recursion limit during postprocessing after all expensive
+    # attribution work has already succeeded.  Keep the paper's frontier rule
+    # -- repeatedly add the largest absolute-score edge whose child is already
+    # in the circuit -- but implement it iteratively.
+    counter = itertools.count()
+    frontier = [
+        (-abs(float(edge.score)), next(counter), edge)
+        for edge in graph.nodes["logits"].parent_edges
+    ]
+    heapq.heapify(frontier)
+    seen: set[str] = set()
+    while requested_k > 0 and frontier:
+        _neg_score, _index, edge = heapq.heappop(frontier)
+        if edge.name in seen:
+            continue
+        seen.add(edge.name)
+        requested_k -= 1
+        edge.in_graph = True
+        edge.child.in_graph = True
+        parent = edge.parent
+        if not parent.in_graph:
+            parent.in_graph = True
+            for parent_edge in parent.parent_edges:
+                if parent_edge.name not in seen and not parent_edge.in_graph:
+                    heapq.heappush(
+                        frontier,
+                        (-abs(float(parent_edge.score)), next(counter), parent_edge),
+                    )
+    graph.prune_dead_nodes(prune_childless=True, prune_parentless=prune_parentless)
     return [edge for edge in graph.edges.values() if edge.in_graph]
 
 
@@ -122,14 +159,24 @@ def write_circuit_jsons(
     target_position: int,
     output_dir: Path,
     k_values: list[int],
+    prune_parentless: bool = True,
 ) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for requested_k in k_values:
-        selected = paper_greedy_edges(graph, min(requested_k, len(graph.edges)))
+        selected = paper_greedy_edges(
+            graph,
+            min(requested_k, len(graph.edges)),
+            prune_parentless=prune_parentless,
+        )
+        selection = (
+            "paper_greedy_absolute_score_with_recursive_pruning"
+            if prune_parentless
+            else "paper_greedy_absolute_score_with_childless_pruning_only"
+        )
         payload = {
             "method": method,
-            "selection": "paper_greedy_absolute_score_with_recursive_pruning",
+            "selection": selection,
             "requested_k": requested_k,
             "retained_edges": len(selected),
             "target": {
