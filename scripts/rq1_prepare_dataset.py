@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import random
+from pathlib import Path
 
 from _rq1_bootstrap import ROOT  # noqa: F401  (sets import paths)
 
@@ -18,6 +19,12 @@ def parse_args():
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-length", type=int, default=512)
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data/processed/gemma-2-2b-it/en/rq1"),
+        help="Processed-data namespace; defaults to the preserved Gemma RQ1 split.",
+    )
     parser.add_argument(
         "--skip-behaviour-filter",
         action="store_true",
@@ -123,7 +130,7 @@ def main():
                 )
             selected.extend(kept)
         rng.shuffle(selected)
-        path = write_processed_split(split, selected)
+            path = write_processed_split(split, selected, data_dir=args.data_dir)
         print(f"Wrote {len(selected)} balanced, filtered rows to {path}")
 
 

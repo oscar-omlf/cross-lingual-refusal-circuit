@@ -1,4 +1,4 @@
-"""Gemma-2 model loading and chat-prompt formatting for RQ1.
+"""Instruction-tuned model loading and chat-prompt formatting.
 
 The same ``load_model`` function is used by every RQ1 script, including the
 smoke test.  Keeping this in one place is important: TransformerLens hook
@@ -46,7 +46,7 @@ def configure_eap_hooks(model) -> None:
                 "TransformerLens version from requirements.txt."
             )
 
-    # Gemma-2 uses grouped-query attention (8 Q heads, 4 KV heads).  EAP's
+    # Gemma-2 and Qwen2.5 use grouped-query attention.  EAP's
     # head-level graph has one Q/K/V input edge set per attention head, so ask
     # TransformerLens to expose K/V inputs expanded to n_heads as well.  This
     # is a view-level tracing choice; it does not change model weights or the
@@ -109,11 +109,11 @@ def load_model(
 
 
 def format_instruction(tokenizer, instruction: str) -> str:
-    """Format one user instruction with Gemma's native generation prompt.
+    """Format one user instruction with the tokenizer's native generation prompt.
 
     ``apply_chat_template`` is preferred so tokenizer revisions are respected.
-    The fallback is the documented Gemma turn format, retained for older
-    tokenizers that lack a template.
+    The fallback is the documented Gemma turn format, retained only for older
+    Gemma tokenizers that lack a template.
     """
     if getattr(tokenizer, "chat_template", None):
         return tokenizer.apply_chat_template(
@@ -129,7 +129,7 @@ def format_instructions(tokenizer, instructions: Iterable[str]) -> list[str]:
 
 
 def post_instruction_positions(tokenizer) -> tuple[int, ...]:
-    """Return the negative token offsets of Gemma's post-instruction suffix.
+    """Return negative offsets for the native post-instruction template suffix.
 
     Arditi et al. select a direction from *every* post-instruction template
     token, rather than presupposing that the final newline is optimal.  We

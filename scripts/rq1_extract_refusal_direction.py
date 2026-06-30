@@ -38,7 +38,13 @@ def parse_args():
         default=(GEMMA_IT_REFUSAL_TOKEN_ID,),
         help="Paper refusal-token set R; Gemma IT uses {235285}.",
     )
-    parser.add_argument("--output-dir", type=Path, default=Path("results/rq1"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/gemma-2-2b-it/en/rq1"))
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data/processed/gemma-2-2b-it/en/rq1"),
+        help="Processed-data namespace containing train.jsonl and val.jsonl.",
+    )
     return parser.parse_args()
 
 
@@ -61,10 +67,10 @@ def main():
     from refusal_circuit.paths import write_json
 
     model = load_model(args.model, device=args.device, dtype=args.dtype)
-    train_harmful = load_processed_split("train", "harmful")
-    train_harmless = load_processed_split("train", "harmless")
-    val_harmful = load_processed_split("val", "harmful")
-    val_harmless = load_processed_split("val", "harmless")
+    train_harmful = load_processed_split("train", "harmful", data_dir=args.data_dir)
+    train_harmless = load_processed_split("train", "harmless", data_dir=args.data_dir)
+    val_harmful = load_processed_split("val", "harmful", data_dir=args.data_dir)
+    val_harmless = load_processed_split("val", "harmless", data_dir=args.data_dir)
 
     train_harmful_prompts = format_instructions(model.tokenizer, [row["instruction"] for row in train_harmful])
     train_harmless_prompts = format_instructions(model.tokenizer, [row["instruction"] for row in train_harmless])
@@ -135,6 +141,7 @@ def main():
         "normalised": True,
         "train_counts": {"harmful": len(train_harmful), "harmless": len(train_harmless)},
         "validation_counts": {"harmful": len(val_harmful), "harmless": len(val_harmless)},
+        "data_dir": str(args.data_dir),
         "candidate_layers": layers,
         "post_instruction_positions": list(positions),
         "addition_coefficient": args.addition_coefficient,

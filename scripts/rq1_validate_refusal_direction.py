@@ -18,9 +18,9 @@ def parse_args():
     parser.add_argument("--max-prompts-per-condition", type=int, default=32)
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--max-length", type=int, default=512)
-    parser.add_argument("--direction-path", type=Path, default=Path("results/rq1/refusal_direction.pt"))
-    parser.add_argument("--metadata-path", type=Path, default=Path("results/rq1/refusal_direction_metadata.json"))
-    parser.add_argument("--output-dir", type=Path, default=Path("results/rq1"))
+    parser.add_argument("--direction-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction.pt"))
+    parser.add_argument("--metadata-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction_metadata.json"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/gemma-2-2b-it/en/rq1"))
     return parser.parse_args()
 
 

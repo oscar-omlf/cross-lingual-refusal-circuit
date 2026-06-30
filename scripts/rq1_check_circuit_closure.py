@@ -26,9 +26,15 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--max-length", type=int, default=512)
     parser.add_argument("--tolerance", type=float, default=0.02)
-    parser.add_argument("--direction-path", type=Path, default=Path("results/rq1/refusal_direction.pt"))
-    parser.add_argument("--metadata-path", type=Path, default=Path("results/rq1/refusal_direction_metadata.json"))
-    parser.add_argument("--output-dir", type=Path, default=Path("results/rq1"))
+    parser.add_argument("--direction-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction.pt"))
+    parser.add_argument("--metadata-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction_metadata.json"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/gemma-2-2b-it/en/rq1"))
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data/processed/gemma-2-2b-it/en/rq1"),
+        help="Processed-data namespace used for this closure check.",
+    )
     return parser.parse_args()
 
 
@@ -54,7 +60,10 @@ def main():
     direction = torch.load(args.direction_path, map_location=next(model.parameters()).device, weights_only=True)
     prompts = format_instructions(
         model.tokenizer,
-        [row["instruction"] for row in load_processed_split(args.split, "harmful")[: args.num_prompts]],
+        [
+            row["instruction"]
+            for row in load_processed_split(args.split, "harmful", data_dir=args.data_dir)[: args.num_prompts]
+        ],
     )
     if not prompts:
         raise ValueError("No harmful prompts were available for the closure check.")

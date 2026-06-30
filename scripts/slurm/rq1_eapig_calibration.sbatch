@@ -21,4 +21,4 @@ env_prefix="${repo_root}/.conda/rq1-refusal-circuit"
 export HF_TOKEN
 conda run --no-capture-output --prefix "${env_prefix}" python scripts/rq1_run_eapig.py \
   --num-prompts 1 --ig-steps 1 --methods eapig eap --k-values 50 \
-  --output-dir results/rq1/calibration
+  --output-dir results/gemma-2-2b-it/en/rq1/calibration

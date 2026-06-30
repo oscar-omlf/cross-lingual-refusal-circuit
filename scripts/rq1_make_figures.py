@@ -12,8 +12,8 @@ from _rq1_bootstrap import ROOT  # noqa: F401
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--results-dir", type=Path, default=Path("results/rq1"))
-    parser.add_argument("--output-dir", type=Path, default=Path("results/rq1/figures"))
+    parser.add_argument("--results-dir", type=Path, default=Path("results/gemma-2-2b-it/en/rq1"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/figures"))
     parser.add_argument(
         "--graph-results-dir",
         type=Path,

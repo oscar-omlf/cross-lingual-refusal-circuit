@@ -26,14 +26,14 @@ def parse_args():
     parser.add_argument(
         "--circuit-path",
         type=Path,
-        default=Path("results/rq1/circuits/eapig_top_1000.json"),
+        default=Path("results/gemma-2-2b-it/en/rq1/circuits/eapig_top_1000.json"),
     )
-    parser.add_argument("--direction-path", type=Path, default=Path("results/rq1/refusal_direction.pt"))
-    parser.add_argument("--metadata-path", type=Path, default=Path("results/rq1/refusal_direction_metadata.json"))
+    parser.add_argument("--direction-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction.pt"))
+    parser.add_argument("--metadata-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction_metadata.json"))
     parser.add_argument(
         "--output-path",
         type=Path,
-        default=Path("results/rq1/behavioural_sanity_top1000.csv"),
+        default=Path("results/gemma-2-2b-it/en/rq1/behavioural_sanity_top1000.csv"),
     )
     return parser.parse_args()
 

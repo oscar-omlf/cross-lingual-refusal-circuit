@@ -205,7 +205,14 @@ tempCodeRunnerFile.py
 
 # One-time RQ1 reference checkout; intentionally not a runtime dependency or
 # nested Git submodule.
+/external/
 /external/refusal_direction/
+/external/multilingual_refusal/
+/.conda/
+/logs/
+/papers/
+/papers.zip
+/results.zip
 
 # Ruff stuff:
 .ruff_cache/
