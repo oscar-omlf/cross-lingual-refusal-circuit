@@ -22,6 +22,7 @@ target_language="${TARGET_LANGUAGE:-de}"
 metric_name="${METRIC_NAME:-english_vector}"
 k_values="${K_VALUES:-10 25 50 100 200 500 1000 2000}"
 num_prompts="${NUM_PROMPTS:-32}"
+prompt_offset="${PROMPT_OFFSET:-0}"
 circuits_subdir="${CIRCUITS_SUBDIR:-circuits_greedy_no_parent_prune_small_to_large}"
 random_seeds="${RANDOM_SEEDS:-0}"
 methods="${METHODS:-eapig}"
@@ -38,7 +39,8 @@ mkdir -p logs/rq2
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 conda run --no-capture-output --prefix "${env_prefix}" \
   python scripts/rq1_evaluate_faithfulness.py \
-    --model Qwen/Qwen2.5-7B-Instruct --split test --num-prompts "${num_prompts}" --batch-size 1 \
+    --model Qwen/Qwen2.5-7B-Instruct --split test --num-prompts "${num_prompts}" \
+    --prompt-offset "${prompt_offset}" --batch-size 1 \
     --data-dir "${data}" --direction-path "${direction_path}" \
     --metadata-path "${metadata_path}" \
     --circuits-dir "${circuits_dir}" \
