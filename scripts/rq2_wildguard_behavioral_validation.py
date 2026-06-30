@@ -118,12 +118,14 @@ def _generate_records(args: argparse.Namespace) -> tuple[list[dict], list[dict],
     condition_names = {
         "clean": "normal",
         "corrupt": "direction_ablated",
+        "target_corrupt": "target_direction_ablated",
         "circuit_only": "circuit_only",
         "circuit_ablated": "circuit_ablated",
     }
     generation_conditions = {
         "normal": "normal",
         "direction_ablated": "refusal_direction_ablated",
+        "target_direction_ablated": "target_direction_ablated",
         "circuit_only": "circuit_only",
         "circuit_ablated": "circuit_ablated",
     }

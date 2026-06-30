@@ -8,7 +8,7 @@ from typing import Iterable
 import torch
 from tqdm.auto import tqdm
 
-from .interventions import all_layer_ablation_hooks
+from .interventions import all_layer_ablation_hooks, direction_ablation_hook
 from .metrics import ProjectionCapture, is_refusal, refusal_logit_margin
 from .model import tokenize_prompts
 
@@ -183,6 +183,18 @@ class ConditionResult:
     logits: torch.Tensor
 
 
+def _target_direction_ablation_hooks(target_hook: str, direction: torch.Tensor, target_position: int):
+    """Ablate the refusal direction only at the metric endpoint.
+
+    This is a stricter causal diagnostic than the global refusal-direction
+    ablation used as the corrupt baseline.  It asks whether removing the
+    direction specifically at ``h_{l*,t*}`` is enough to change downstream
+    logits/generation.
+    """
+
+    return [(target_hook, direction_ablation_hook(direction, position=target_position))]
+
+
 def evaluate_conditions(
     model,
     graph,
@@ -195,7 +207,16 @@ def evaluate_conditions(
     max_length: int | None = 512,
 ) -> dict[str, ConditionResult]:
     """Return clean, corrupt, circuit-only, and circuit-ablated outcomes."""
-    outputs = {name: {"projection": [], "logits": []} for name in ("clean", "corrupt", "circuit_only", "circuit_ablated")}
+    outputs = {
+        name: {"projection": [], "logits": []}
+        for name in (
+            "clean",
+            "corrupt",
+            "target_corrupt",
+            "circuit_only",
+            "circuit_ablated",
+        )
+    }
     for prompt_batch in tqdm(
         _batches(prompts, batch_size),
         total=(len(prompts) + batch_size - 1) // batch_size,
@@ -219,6 +240,15 @@ def evaluate_conditions(
                 target_position=target_position,
                 direction=direction,
                 fwd_hooks=all_layer_ablation_hooks(model, direction),
+            ),
+            "target_corrupt": _normal_forward(
+                model,
+                tokens,
+                attention_mask,
+                target_hook=target_hook,
+                target_position=target_position,
+                direction=direction,
+                fwd_hooks=_target_direction_ablation_hooks(target_hook, direction, target_position),
             ),
             "circuit_only": _mixed_forward(
                 model,
@@ -309,6 +339,16 @@ def _greedy_completion(
                 direction=direction,
                 fwd_hooks=all_layer_ablation_hooks(model, direction),
             )
+        elif condition == "target_direction_ablated":
+            _, logits = _normal_forward(
+                model,
+                tokens,
+                None,
+                target_hook=target_hook,
+                target_position=target_position,
+                direction=direction,
+                fwd_hooks=_target_direction_ablation_hooks(target_hook, direction, target_position),
+            )
         elif condition == "circuit_only":
             _, logits = _mixed_forward(
                 model,
@@ -357,7 +397,13 @@ def behavioural_sanity_check(
     max_new_tokens: int = 16,
 ) -> list[dict]:
     """Return aggregate refusal-prefix rates; never persist harmful completions."""
-    conditions = ("normal", "refusal_direction_ablated", "circuit_only", "circuit_ablated")
+    conditions = (
+        "normal",
+        "refusal_direction_ablated",
+        "target_direction_ablated",
+        "circuit_only",
+        "circuit_ablated",
+    )
     selected = prompts[:max_prompts]
     counts = {condition: 0 for condition in conditions}
     margins = {condition: [] for condition in conditions}
@@ -384,6 +430,16 @@ def behavioural_sanity_check(
                     target_position=target_position,
                     direction=direction,
                     fwd_hooks=all_layer_ablation_hooks(model, direction),
+                )
+            elif condition == "target_direction_ablated":
+                projection, logits = _normal_forward(
+                    model,
+                    tokens,
+                    None,
+                    target_hook=target_hook,
+                    target_position=target_position,
+                    direction=direction,
+                    fwd_hooks=_target_direction_ablation_hooks(target_hook, direction, target_position),
                 )
             else:
                 projection, logits = _mixed_forward(

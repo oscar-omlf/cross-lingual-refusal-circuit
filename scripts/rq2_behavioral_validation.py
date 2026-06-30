@@ -279,6 +279,7 @@ def main() -> None:
         condition_names = {
             "clean": "normal",
             "corrupt": "direction_ablated",
+            "target_corrupt": "target_direction_ablated",
             "circuit_only": "circuit_only",
             "circuit_ablated": "circuit_ablated",
         }
