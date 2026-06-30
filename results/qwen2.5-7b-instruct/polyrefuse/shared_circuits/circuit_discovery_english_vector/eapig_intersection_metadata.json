@@ -1,0 +1,15 @@
+{
+  "circuits_subdir": "circuits_greedy_no_parent_prune_small_to_large",
+  "dataset": "PolyRefuse",
+  "definition": "edge-name intersection of independently discovered circuit JSONs",
+  "discovery_subdir": "circuit_discovery_english_vector",
+  "functional_evaluation_required": true,
+  "languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "majority_threshold": 3,
+  "model": "Qwen/Qwen2.5-7B-Instruct"
+}

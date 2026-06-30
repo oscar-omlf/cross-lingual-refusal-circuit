@@ -1,0 +1,169 @@
+{
+  "edges": [
+    {
+      "abs_score": 0.9627938270568848,
+      "name": "a13.h14->m14",
+      "qkv": null,
+      "score": -0.9627938270568848,
+      "source": {
+        "head": 14,
+        "layer": 13,
+        "name": "a13.h14",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.0080708265304565,
+      "name": "m13->m14",
+      "qkv": null,
+      "score": -1.0080708265304565,
+      "source": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.77748703956604,
+      "name": "m6->logits",
+      "qkv": null,
+      "score": 1.77748703956604,
+      "source": {
+        "layer": 6,
+        "name": "m6",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.297237753868103,
+      "name": "m9->logits",
+      "qkv": null,
+      "score": 1.297237753868103,
+      "source": {
+        "layer": 9,
+        "name": "m9",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.4268720149993896,
+      "name": "m11->logits",
+      "qkv": null,
+      "score": -1.4268720149993896,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.0127195119857788,
+      "name": "a13.h5->logits",
+      "qkv": null,
+      "score": -1.0127195119857788,
+      "source": {
+        "head": 5,
+        "layer": 13,
+        "name": "a13.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 2.081111192703247,
+      "name": "a13.h14->logits",
+      "qkv": null,
+      "score": -2.081111192703247,
+      "source": {
+        "head": 14,
+        "layer": 13,
+        "name": "a13.h14",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 3.503906011581421,
+      "name": "m13->logits",
+      "qkv": null,
+      "score": -3.503906011581421,
+      "source": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 8.956564903259277,
+      "name": "m14->logits",
+      "qkv": null,
+      "score": -8.956564903259277,
+      "source": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    }
+  ],
+  "method": "eapig",
+  "requested_k": 10,
+  "retained_edges": 9,
+  "selection": "structural_intersection_of_en_zh",
+  "source_circuit_files": {
+    "en": "/gpfs/home4/scur0121/cross-lingual-refusal-circuit/results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_english_vector/circuits_greedy_no_parent_prune_small_to_large/eapig_top_10.json",
+    "zh": "/gpfs/home4/scur0121/cross-lingual-refusal-circuit/results/qwen2.5-7b-instruct/polyrefuse/zh/circuit_discovery_english_vector/circuits_greedy_no_parent_prune_small_to_large/eapig_top_10.json"
+  },
+  "source_languages": [
+    "en",
+    "zh"
+  ],
+  "target": {
+    "hook": "blocks.15.hook_resid_pre",
+    "layer": 15,
+    "metric": "residual_projection_onto_refusal_direction",
+    "position": -2
+  }
+}

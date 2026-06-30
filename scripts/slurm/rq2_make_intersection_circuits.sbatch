@@ -15,10 +15,11 @@ module load Miniforge3/25.3.0-3
 
 repo_root="${SLURM_SUBMIT_DIR}"
 env_prefix="${repo_root}/.conda/rq1-refusal-circuit"
-languages="${LANGUAGES:-en de ru}"
+languages="${LANGUAGES:-en de zh th}"
 metric_name="${METRIC_NAME:-english_vector}"
-k_values="${K_VALUES:-25 50 100 200 500 1000 2000}"
+k_values="${K_VALUES:-10 25 50 100 200 500 1000 2000}"
 include_pairs="${INCLUDE_PAIRS:-0}"
+majority_threshold="${MAJORITY_THRESHOLD:-3}"
 
 cd "${repo_root}"
 mkdir -p logs/rq2
@@ -31,4 +32,5 @@ conda run --no-capture-output --prefix "${env_prefix}" \
     --languages ${languages} \
     --k-values ${k_values} \
     --discovery-subdir "circuit_discovery_${metric_name}" \
+    --majority-threshold "${majority_threshold}" \
     "${extra[@]}"

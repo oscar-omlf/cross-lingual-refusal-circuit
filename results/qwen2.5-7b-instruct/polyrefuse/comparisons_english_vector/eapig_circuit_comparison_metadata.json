@@ -1,0 +1,21 @@
+{
+  "caveat": "Use cross-language faithfulness/necessity to establish functional transfer.",
+  "circuits_subdir": "circuits_greedy_no_parent_prune_small_to_large",
+  "dataset": "PolyRefuse",
+  "definition": {
+    "iou": "|C_i intersect C_j| / |C_i union C_j|",
+    "overlap_coefficient": "|C_i intersect C_j| / min(|C_i|, |C_j|)",
+    "random_baseline": "uniform random edge sets matched to each pair's retained edge counts",
+    "score_correlation": "correlation across all common graph edges before greedy pruning",
+    "weighted_jaccard_abs_scores": "sum_e min(|s_i(e)|, |s_j(e)|) / sum_e max(|s_i(e)|, |s_j(e)|)"
+  },
+  "discovery_subdir": "circuit_discovery_english_vector",
+  "languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "method": "eapig",
+  "model": "Qwen/Qwen2.5-7B-Instruct"
+}

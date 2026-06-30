@@ -2,9 +2,10 @@
 """Build shared-core circuit JSONs from multilingual circuit intersections.
 
 For each requested k, this script takes independently discovered circuits and
-saves pairwise/triple edge intersections in the same JSON format consumed by
-``rq1_evaluate_faithfulness.py``.  It is intentionally structural: functional
-sufficiency/necessity must be evaluated separately on each language.
+saves strict intersections and optional majority-vote cores in the same JSON
+format consumed by ``rq1_evaluate_faithfulness.py``.  It is intentionally
+structural: functional sufficiency/necessity must be evaluated separately on
+each language.
 """
 
 from __future__ import annotations
@@ -34,6 +35,12 @@ def parse_args():
         "--include-pairs",
         action="store_true",
         help="Also write every pairwise intersection. The all-language intersection is always written.",
+    )
+    parser.add_argument(
+        "--majority-threshold",
+        type=int,
+        default=None,
+        help="Also write a majority core containing edges present in at least this many languages.",
     )
     return parser.parse_args()
 
@@ -81,6 +88,55 @@ def _write_intersection(
     print(f"Wrote {path} with {len(shared_edges)} shared edges")
 
 
+def _write_majority(
+    *,
+    output_dir: Path,
+    method: str,
+    requested_k: int,
+    languages: tuple[str, ...],
+    payloads: dict[str, dict],
+    source_paths: dict[str, Path],
+    threshold: int,
+) -> set[str]:
+    edge_maps = {
+        language: {edge["name"]: edge for edge in payloads[language]["edges"]}
+        for language in languages
+    }
+    counts: dict[str, int] = {}
+    for edge_map in edge_maps.values():
+        for name in edge_map:
+            counts[name] = counts.get(name, 0) + 1
+    selected_names = {name for name, count in counts.items() if count >= threshold}
+    reference_language = languages[0]
+    reference_order = [edge["name"] for edge in payloads[reference_language]["edges"]]
+    ordered_names = [name for name in reference_order if name in selected_names]
+    ordered_names.extend(sorted(selected_names - set(ordered_names)))
+    shared_edges = []
+    for name in ordered_names:
+        for language in languages:
+            if name in edge_maps[language]:
+                record = dict(edge_maps[language][name])
+                record["language_support"] = counts[name]
+                shared_edges.append(record)
+                break
+    output_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "method": method,
+        "selection": f"structural_majority_core_at_least_{threshold}_of_{len(languages)}",
+        "requested_k": requested_k,
+        "retained_edges": len(shared_edges),
+        "source_languages": list(languages),
+        "majority_threshold": threshold,
+        "source_circuit_files": {language: str(source_paths[language]) for language in languages},
+        "target": payloads[reference_language]["target"],
+        "edges": shared_edges,
+    }
+    path = output_dir / f"{method}_top_{requested_k}.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"Wrote {path} with {len(shared_edges)} majority-core edges")
+    return selected_names
+
+
 def main():
     args = parse_args()
     import pandas as pd
@@ -88,6 +144,9 @@ def main():
     from refusal_circuit.paths import experiment_results_dir, write_json
 
     languages = tuple(dict.fromkeys(args.languages))
+    majority_threshold = args.majority_threshold
+    if majority_threshold is not None and not 1 <= majority_threshold <= len(languages):
+        raise ValueError("--majority-threshold must be between 1 and the number of languages.")
     results_root = args.results_root or experiment_results_dir(args.model, "polyrefuse", "en").parent
     output_root = args.output_root or results_root / "shared_circuits" / args.discovery_subdir
     rows = []
@@ -137,6 +196,38 @@ def main():
                     "union_edges": len(union),
                     "intersection_over_min": len(shared) / max(min(len(values) for values in edge_sets.values()), 1),
                     "intersection_over_union": len(shared) / max(len(union), 1),
+                    "core_type": "strict_intersection",
+                }
+            )
+        if majority_threshold is not None:
+            output_dir = output_root / f"majority_at_least_{majority_threshold}_of_{len(languages)}" / args.circuits_subdir
+            selected = _write_majority(
+                output_dir=output_dir,
+                method=args.method,
+                requested_k=requested_k,
+                languages=languages,
+                payloads=payloads,
+                source_paths=source_paths,
+                threshold=majority_threshold,
+            )
+            union = set.union(
+                *({edge["name"] for edge in payloads[language]["edges"]} for language in languages)
+            )
+            rows.append(
+                {
+                    "method": args.method,
+                    "requested_k": requested_k,
+                    "languages": "_".join(languages),
+                    "n_languages": len(languages),
+                    "intersection_edges": len(selected),
+                    "union_edges": len(union),
+                    "intersection_over_min": len(selected)
+                    / max(
+                        min(len(payloads[language]["edges"]) for language in languages),
+                        1,
+                    ),
+                    "intersection_over_union": len(selected) / max(len(union), 1),
+                    "core_type": f"majority_at_least_{majority_threshold}",
                 }
             )
 
@@ -151,6 +242,7 @@ def main():
             "discovery_subdir": args.discovery_subdir,
             "circuits_subdir": args.circuits_subdir,
             "definition": "edge-name intersection of independently discovered circuit JSONs",
+            "majority_threshold": majority_threshold,
             "functional_evaluation_required": True,
         },
     )
