@@ -239,7 +239,7 @@ Circuits and edge scores:
 
 Plot generator:
 
-- `scripts/rq2_make_presentation_plots.py`
+- `python scripts/rq.py rq2.plots`
 
 ## Suggested next steps
 
