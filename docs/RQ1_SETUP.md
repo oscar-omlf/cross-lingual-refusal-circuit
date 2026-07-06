@@ -11,7 +11,7 @@ interpret this as a narrow, first test of a downstream bottleneck.
 
 ## What is implemented
 
-`scripts/rq1_prepare_dataset.py` creates exactly balanced JSONL splits under
+`python scripts/rq.py rq1.prepare-data` creates exactly balanced JSONL splits under
 `data/processed/rq1/`: 128/128 train, 32/32 validation, and 64/64 test
 harmful/harmless instructions. It starts from the checked-out
 `external/refusal_direction/dataset/splits` prompt pools (or a user-supplied
@@ -22,7 +22,7 @@ only dataset used after this step. It excludes chat-formatted prompts longer
 than `--max-length` (512 by default), recording retained token length in each
 row, before any generation-based filtering.
 
-`scripts/rq1_extract_refusal_direction.py` follows Arditi et al.'s selection
+`python scripts/rq.py rq1.extract-direction` follows Arditi et al.'s selection
 procedure. It derives every post-instruction offset from the loaded Gemma chat
 template, computes a difference-in-means candidate at every such position and
 every residual-input layer, then evaluates each candidate on held-out data.
@@ -40,7 +40,7 @@ The primary metric is exactly
 `M_ref(x) = h[l*, t*](x) dot r_ref_hat`.
 
 The position `t*` may be the final assistant-start newline or any preceding
-post-instruction template token. `scripts/rq1_run_eapig.py` builds an EAP graph
+post-instruction template token. `python scripts/rq.py rq1.run-eapig` builds an EAP graph
 that terminates at this residual hook rather than at logits, so all nodes are
 attention heads or MLPs upstream of the downstream metric.
 
@@ -64,7 +64,7 @@ Because this intervention first changes `blocks.0.hook_resid_pre`, the RQ1
 graph uses that post-intervention layer-0 residual activation as its input
 source rather than the unchanged token embedding. This is required for a
 same-token corrupt baseline to be reconstructible by edge patching. Before any
-attribution, `scripts/rq1_check_circuit_closure.py` enforces the four boundary
+attribution, `python scripts/rq.py rq1.circuit-closure` enforces the four boundary
 conditions: empty/full circuits recover corrupt/clean respectively for both
 faithfulness and necessity.
 
@@ -90,7 +90,7 @@ PyTorch CUDA package if the cluster requires another compatible runtime):
 ```bash
 conda env create -f environment.yml
 conda activate rq1-refusal-circuit
-python scripts/rq1_smoke_test.py
+python scripts/rq.py rq1.smoke
 ```
 
 The smoke test uses the same `load_model` function and TransformerLens hook
@@ -118,29 +118,29 @@ this refusal experiment.
 
 ```bash
 # 1. Filter and persist the required balanced splits.
-python scripts/rq1_prepare_dataset.py --batch-size 4
+python scripts/rq.py rq1.prepare-data --batch-size 4
 
 # 2. Train DIM candidates, then select and save the validated direction.
-python scripts/rq1_extract_refusal_direction.py --batch-size 4
+python scripts/rq.py rq1.extract-direction --batch-size 4
 
 # 3. Aggregate-only directional behavioural check; no completions are saved.
-python scripts/rq1_validate_refusal_direction.py --max-new-tokens 32
+python scripts/rq.py rq1.validate-direction --max-new-tokens 32
 
 # 4. Require that empty/full patched circuits reproduce corrupt/clean baselines.
-python scripts/rq1_check_circuit_closure.py --num-prompts 8
+python scripts/rq.py rq1.circuit-closure --num-prompts 8
 
 # 5. One-prompt, one-step numerical attribution calibration.
-python scripts/rq1_run_eapig.py --num-prompts 1 --ig-steps 1 --output-dir results/rq1/calibration
+python scripts/rq.py rq1.run-eapig --num-prompts 1 --ig-steps 1 --output-dir results/rq1/calibration
 
 # 6. Small pilot: 16 harmful test prompts and three path steps.
-python scripts/rq1_run_eapig.py --num-prompts 16 --ig-steps 3
+python scripts/rq.py rq1.run-eapig --num-prompts 16 --ig-steps 3
 
 # 7. Full run: 64 harmful test prompts and five path steps.
-python scripts/rq1_run_eapig.py --num-prompts 64 --ig-steps 5
+python scripts/rq.py rq1.run-eapig --num-prompts 64 --ig-steps 5
 
 # 8. Circuit-only faithfulness, circuit ablation necessity, and matched random
 #    edge sets. EAP is included when its score files/circuits exist.
-python scripts/rq1_evaluate_faithfulness.py --num-prompts 64
+python scripts/rq.py rq1.evaluate --num-prompts 64
 ```
 
 The fourth command overwrites the pilot score paths by design. Preserve a pilot
