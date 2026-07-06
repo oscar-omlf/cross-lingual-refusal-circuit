@@ -1,0 +1,22 @@
+{
+  "circuit_files": [
+    "results/rq1/pilot/circuits/eap_top_50.json",
+    "results/rq1/pilot/circuits/eap_top_100.json",
+    "results/rq1/pilot/circuits/eap_top_200.json",
+    "results/rq1/pilot/circuits/eap_top_500.json",
+    "results/rq1/pilot/circuits/eap_top_1000.json",
+    "results/rq1/pilot/circuits/eap_top_2000.json"
+  ],
+  "circuit_selection": "greedy backwards from terminal by absolute score, then recursive pruning",
+  "corrupt_baseline": "same harmful prompt with global refusal-direction ablation",
+  "graph_granularity": "attention heads and MLPs; Q/K/V input edges retained",
+  "ig_steps": null,
+  "input_source": "blocks.0.hook_resid_pre (post-ablation in corrupt run)",
+  "interpolation_path": "global refusal-direction ablation strength alpha=0 (corrupt) to alpha=1 (clean); intervention-aware EAP-IG extension",
+  "method": "eap",
+  "metric": "h[layer, position]^T unit_refusal_direction",
+  "model": "google/gemma-2-2b-it",
+  "n_prompts": 16,
+  "split": "test",
+  "target_hook": "blocks.14.hook_resid_pre"
+}

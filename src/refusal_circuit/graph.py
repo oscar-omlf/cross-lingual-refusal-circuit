@@ -49,10 +49,33 @@ def make_projection_graph(model, target_layer: int):
     return graph
 
 
+def make_logit_graph(model):
+    """Build the ordinary full EAP graph ending at final residual logits.
+
+    Clean and corrupt inputs are identical strings in our refusal-direction
+    experiments; they differ only by the global residual-direction ablation.
+    Therefore, as in ``make_projection_graph``, the graph input is treated as
+    the post-ablation residual stream at layer 0 rather than token embeddings.
+    """
+
+    try:
+        from eap.graph import Graph
+    except ImportError as exc:
+        raise RuntimeError(
+            "The local EAP-IG package is not installed. Run `pip install -e EAP-IG`."
+        ) from exc
+
+    graph = Graph.from_model(model)
+    graph.nodes["input"].out_hook = "blocks.0.hook_resid_pre"
+    return graph
+
+
 def _node_metadata(node) -> dict:
     if node.name == "input":
         return {"name": node.name, "type": "input"}
     if node.name == "logits":
+        if str(getattr(node, "in_hook", "")).endswith("hook_resid_post"):
+            return {"name": "logits", "type": "logit_metric", "layer": node.layer}
         return {"name": "refusal_projection", "type": "residual_metric", "layer": node.layer}
     if node.name.startswith("a"):
         return {"name": node.name, "type": "attention_head", "layer": node.layer, "head": node.head}
@@ -184,6 +207,50 @@ def write_circuit_jsons(
                 "layer": target_layer,
                 "position": target_position,
                 "metric": "residual_projection_onto_refusal_direction",
+            },
+            "edges": [edge_record(edge) for edge in selected],
+        }
+        path = output_dir / f"{method}_top_{requested_k}.json"
+        write_json(path, payload)
+        paths.append(path)
+    return paths
+
+
+def write_logit_circuit_jsons(
+    graph,
+    *,
+    method: str,
+    refusal_token_ids: list[int],
+    output_dir: Path,
+    k_values: list[int],
+    prune_parentless: bool = True,
+) -> list[Path]:
+    """Write greedy circuit JSONs for a next-token refusal log-odds target."""
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for requested_k in k_values:
+        selected = paper_greedy_edges(
+            graph,
+            min(requested_k, len(graph.edges)),
+            prune_parentless=prune_parentless,
+        )
+        selection = (
+            "paper_greedy_absolute_score_with_recursive_pruning"
+            if prune_parentless
+            else "paper_greedy_absolute_score_with_childless_pruning_only"
+        )
+        payload = {
+            "method": method,
+            "selection": selection,
+            "requested_k": requested_k,
+            "retained_edges": len(selected),
+            "target": {
+                "hook": graph.nodes["logits"].in_hook,
+                "layer": graph.nodes["logits"].layer,
+                "position": -1,
+                "metric": "next_token_refusal_log_odds",
+                "refusal_token_ids": list(refusal_token_ids),
             },
             "edges": [edge_record(edge) for edge in selected],
         }
