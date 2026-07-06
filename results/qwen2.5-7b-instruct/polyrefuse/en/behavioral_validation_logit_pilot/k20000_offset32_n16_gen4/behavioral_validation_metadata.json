@@ -1,0 +1,20 @@
+{
+  "circuit_family": "logit_eapig_pilot",
+  "circuit_path": "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_20000.json",
+  "dataset": "PolyRefuse",
+  "direction_path": "results/qwen2.5-7b-instruct/polyrefuse/en/shared_metrics/english_vector/refusal_direction.pt",
+  "generated_text_saved": false,
+  "generation_prompts_per_label": 4,
+  "language": "en",
+  "max_new_tokens": 32,
+  "metadata_path": "results/qwen2.5-7b-instruct/polyrefuse/en/shared_metrics/english_vector/metadata.json",
+  "metric": "next-token refusal log-odds circuit; diagnostics also report h_15,-2 projection",
+  "metric_name": "english_vector",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "notes": "This evaluates circuits discovered against final next-token refusal log-odds. Generated completions are decoded only in memory for aggregate substring rates.",
+  "num_prompts_per_label": 16,
+  "prompt_offset": 32,
+  "requested_k": 20000,
+  "retained_edges": 20000,
+  "split": "test"
+}

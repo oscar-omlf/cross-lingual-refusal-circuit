@@ -18,7 +18,7 @@ import torch
 from tqdm.auto import tqdm
 
 from .interventions import all_layer_ablation_hooks
-from .metrics import ProjectionCapture
+from .metrics import ProjectionCapture, refusal_log_odds
 from .model import tokenize_prompts
 
 
@@ -41,6 +41,8 @@ def _make_eap_hooks(
     n_pos: int,
     scores: torch.Tensor,
     direction: torch.Tensor,
+    *,
+    include_logit_gradients: bool = False,
 ):
     """Create upstream EAP cache and gradient hooks with float32 accumulation."""
     from eap.graph import AttentionNode, InputNode, LogitNode
@@ -112,7 +114,7 @@ def _make_eap_hooks(
         # The terminal residual-projection metric is handled explicitly after
         # backward below. Its HookPoint-level backward hook does not fire when
         # the metric directly reads the activation inside that HookPoint.
-        if isinstance(node, LogitNode):
+        if isinstance(node, LogitNode) and not include_logit_gradients:
             continue
         if isinstance(node, AttentionNode):
             if node.layer in processed_attention_layers:
@@ -121,7 +123,7 @@ def _make_eap_hooks(
             attention_nodes[node.layer] = node
 
         fwd_index = graph.forward_index(node)
-        if not isinstance(node, AttentionNode):
+        if not isinstance(node, (AttentionNode, LogitNode)):
             fwd_corrupt.append(
                 (
                     node.out_hook,
@@ -294,6 +296,98 @@ def attribute(
     scores /= total_examples
     if integrated_gradients:
         scores /= config.ig_steps
+    if not torch.isfinite(scores).all():
+        raise RuntimeError("Non-finite EAP/EAP-IG edge scores; do not interpret this run.")
+
+    for edge in graph.edges.values():
+        edge.score = float(
+            scores[
+                graph.forward_index(edge.parent, attn_slice=False),
+                graph.backward_index(edge.child, qkv=edge.qkv, attn_slice=False),
+            ].item()
+        )
+
+
+def attribute_logit_metric(
+    model,
+    graph,
+    prompts: list[str],
+    *,
+    direction: torch.Tensor,
+    refusal_token_ids: list[int],
+    config: AttributionConfig,
+    integrated_gradients: bool,
+) -> None:
+    """Populate edge scores for a next-token refusal log-odds metric.
+
+    This uses the same intervention-aware path as ``attribute``: clean and
+    corrupt are the same prompt, with the corrupt run produced by global
+    refusal-direction ablation.  The metric is computed on final prompt-position
+    logits, so the graph terminates at the ordinary logit node rather than an
+    internal residual-projection node.
+    """
+
+    if not prompts:
+        raise ValueError("Attribution requires at least one harmful prompt.")
+    if integrated_gradients and config.ig_steps <= 0:
+        raise ValueError("ig_steps must be positive.")
+    if not refusal_token_ids:
+        raise ValueError("At least one refusal token ID is required.")
+
+    device = next(model.parameters()).device
+    scores = torch.zeros((graph.n_forward, graph.n_backward), device=device, dtype=torch.float32)
+    total_examples = 0
+    total_gradient_steps = 0
+
+    iterator = tqdm(
+        _batches(prompts, config.batch_size),
+        total=(len(prompts) + config.batch_size - 1) // config.batch_size,
+        desc="EAP-IG logits" if integrated_gradients else "EAP logits",
+    )
+    for prompt_batch in iterator:
+        tokens, attention_mask = tokenize_prompts(model, prompt_batch, max_length=config.max_length)
+        batch_size, n_pos = tokens.shape
+        total_examples += batch_size
+        fwd_corrupt, fwd_clean, bwd_hooks, activation_difference = _make_eap_hooks(
+            model,
+            graph,
+            batch_size,
+            n_pos,
+            scores,
+            direction,
+            include_logit_gradients=True,
+        )
+
+        with torch.no_grad(), model.hooks(
+            fwd_hooks=fwd_corrupt + all_layer_ablation_hooks(model, direction, strength=1.0)
+        ):
+            _run_forward(model, tokens, attention_mask, fwd_corrupt)
+
+        with torch.no_grad(), model.hooks(fwd_hooks=fwd_clean):
+            _run_forward(model, tokens, attention_mask, fwd_clean)
+
+        path_alphas: Iterable[float] = (
+            (step / config.ig_steps for step in range(1, config.ig_steps + 1))
+            if integrated_gradients
+            else (1.0,)
+        )
+        for alpha in path_alphas:
+            model.zero_grad(set_to_none=True)
+            path_hooks = all_layer_ablation_hooks(model, direction, strength=1.0 - alpha)
+            with model.hooks(
+                fwd_hooks=[("hook_embed", _input_requires_grad)] + path_hooks,
+                bwd_hooks=bwd_hooks,
+            ):
+                logits = _run_forward(model, tokens, attention_mask, path_hooks)
+                metric_value = refusal_log_odds(logits, refusal_token_ids).mean()
+                metric_value.backward()
+            total_gradient_steps += 1
+
+    scores /= total_examples
+    if integrated_gradients:
+        scores /= config.ig_steps
+    if total_gradient_steps == 0:
+        raise RuntimeError("No gradient steps were taken.")
     if not torch.isfinite(scores).all():
         raise RuntimeError("Non-finite EAP/EAP-IG edge scores; do not interpret this run.")
 

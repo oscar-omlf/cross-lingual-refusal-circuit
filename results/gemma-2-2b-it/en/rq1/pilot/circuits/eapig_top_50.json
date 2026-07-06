@@ -1,0 +1,13 @@
+{
+  "edges": [],
+  "method": "eapig",
+  "requested_k": 50,
+  "retained_edges": 0,
+  "selection": "paper_greedy_absolute_score_with_recursive_pruning",
+  "target": {
+    "hook": "blocks.14.hook_resid_pre",
+    "layer": 14,
+    "metric": "residual_projection_onto_refusal_direction",
+    "position": -2
+  }
+}

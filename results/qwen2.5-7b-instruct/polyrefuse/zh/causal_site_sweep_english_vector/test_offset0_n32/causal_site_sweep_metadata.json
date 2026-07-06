@@ -1,0 +1,80 @@
+{
+  "batch_size": 4,
+  "data_dir": "data/processed/qwen2.5-7b-instruct/polyrefuse/zh",
+  "direction_path": "results/qwen2.5-7b-instruct/polyrefuse/zh/shared_metrics/english_vector/refusal_direction.pt",
+  "generated_text_saved": false,
+  "labels": [
+    "harmful",
+    "harmless"
+  ],
+  "layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27
+  ],
+  "max_length": 512,
+  "metadata_path": "results/qwen2.5-7b-instruct/polyrefuse/zh/shared_metrics/english_vector/metadata.json",
+  "metric": "next-token refusal log-odds under local resid_pre direction ablation",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "num_prompts": 32,
+  "positions": [
+    -5,
+    -4,
+    -3,
+    -2,
+    -1
+  ],
+  "prompt_offset": 0,
+  "raw_prompts_saved": false,
+  "refusal_token_ids": [
+    35946
+  ],
+  "split": "test",
+  "template_positions": [
+    {
+      "decoded_template_token": "<|im_end|>",
+      "position": -5
+    },
+    {
+      "decoded_template_token": "\n",
+      "position": -4
+    },
+    {
+      "decoded_template_token": "<|im_start|>",
+      "position": -3
+    },
+    {
+      "decoded_template_token": "assistant",
+      "position": -2
+    },
+    {
+      "decoded_template_token": "\n",
+      "position": -1
+    }
+  ]
+}

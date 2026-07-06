@@ -31,6 +31,12 @@ def parse_args():
     parser.add_argument("--direction-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction.pt"))
     parser.add_argument("--metadata-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction_metadata.json"))
     parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data/processed/gemma-2-2b-it/en/rq1"),
+        help="Processed Gemma RQ1 data directory.",
+    )
+    parser.add_argument(
         "--output-path",
         type=Path,
         default=Path("results/gemma-2-2b-it/en/rq1/behavioural_sanity_top1000.csv"),
@@ -63,7 +69,10 @@ def main():
     direction = torch.load(args.direction_path, map_location=next(model.parameters()).device, weights_only=True)
     prompts = format_instructions(
         model.tokenizer,
-        [row["instruction"] for row in load_processed_split(args.split, "harmful")[: args.num_prompts]],
+        [
+            row["instruction"]
+            for row in load_processed_split(args.split, "harmful", data_dir=args.data_dir)[: args.num_prompts]
+        ],
     )
     graph = make_projection_graph(model, int(metadata["layer"]))
     set_selected_edges(graph, load_circuit_edge_names(args.circuit_path))
