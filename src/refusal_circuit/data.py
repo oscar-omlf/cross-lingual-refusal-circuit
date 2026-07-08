@@ -51,7 +51,7 @@ def load_candidate_pool(
     Priority is a user-provided local JSON/JSONL pool, then the one-time
     ``external/refusal_direction`` checkout requested for this project, and
     finally public Hugging Face datasets.  After preparation all RQ1 scripts
-    use only the processed JSONL namespace selected by the calling script.
+    use only ``data/processed/rq1/*.jsonl``.
     """
     if label not in {"harmful", "harmless"}:
         raise ValueError("label must be 'harmful' or 'harmless'.")
@@ -95,13 +95,12 @@ def load_candidate_pool(
     return [_normalise_row(dict(row), label, source, index) for index, row in enumerate(dataset)]
 
 
-def processed_path(split: str, *, data_dir: Path | None = None) -> Path:
-    """Path for a processed split, optionally in another experiment namespace."""
-    return (data_dir or DATA_DIR) / f"{split}.jsonl"
+def processed_path(split: str, base_dir: Path | None = None) -> Path:
+    return (base_dir or DATA_DIR) / f"{split}.jsonl"
 
 
-def write_processed_split(split: str, rows: Iterable[dict], *, data_dir: Path | None = None) -> Path:
-    path = ensure_parent(processed_path(split, data_dir=data_dir))
+def write_processed_split(split: str, rows: Iterable[dict], base_dir: Path | None = None) -> Path:
+    path = ensure_parent(processed_path(split, base_dir))
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -109,15 +108,19 @@ def write_processed_split(split: str, rows: Iterable[dict], *, data_dir: Path | 
 
 
 def load_processed_split(
-    split: str,
-    label: str | None = None,
-    *,
-    data_dir: Path | None = None,
+    split: str, label: str | None = None, base_dir: Path | None = None
 ) -> list[dict]:
-    path = processed_path(split, data_dir=data_dir)
+    """Load a processed split.
+
+    ``base_dir`` defaults to the RQ1 refusal directory so every existing
+    refusal caller is unchanged.  The persona pipeline passes its own
+    ``data/processed/persona/<trait>`` directory, which shares this schema.
+    """
+    path = processed_path(split, base_dir)
     if not path.exists():
         raise FileNotFoundError(
-            f"Missing {path}. Run `python scripts/rq1_prepare_dataset.py` first."
+            f"Missing {path}. Run the matching prepare-dataset script first "
+            "(scripts/rq1_prepare_dataset.py or scripts/persona_prepare_dataset.py)."
         )
     rows = _read_json_or_jsonl(path)
     if label is not None:

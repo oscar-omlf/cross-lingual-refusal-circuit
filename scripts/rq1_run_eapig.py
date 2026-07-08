@@ -21,24 +21,15 @@ def parse_args():
     parser.add_argument("--ig-steps", type=int, default=5)
     parser.add_argument("--methods", nargs="+", choices=("eapig", "eap"), default=("eapig", "eap"))
     parser.add_argument("--k-values", type=int, nargs="+", default=(50, 100, 200, 500, 1000, 2000))
-    parser.add_argument("--direction-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction.pt"))
-    parser.add_argument("--metadata-path", type=Path, default=Path("results/gemma-2-2b-it/en/rq1/refusal_direction_metadata.json"))
-    parser.add_argument("--output-dir", type=Path, default=Path("results/gemma-2-2b-it/en/rq1"))
+    parser.add_argument("--direction-path", type=Path, default=Path("results/rq1/refusal_direction.pt"))
+    parser.add_argument("--metadata-path", type=Path, default=Path("results/rq1/refusal_direction_metadata.json"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results/rq1"))
     parser.add_argument(
-        "--skip-paper-circuits",
-        action="store_true",
-        help=(
-            "Only write edge scores/summaries. RQ2 uses a post-processing "
-            "edge-mask circuit extractor because the original recursive "
-            "paper-pruned JSON writer can hit Python recursion limits on the "
-            "truncated residual-projection graph."
-        ),
-    )
-    parser.add_argument(
-        "--data-dir",
+        "--processed-dir",
         type=Path,
-        default=Path("data/processed/gemma-2-2b-it/en/rq1"),
-        help="Processed-data namespace used for this attribution run.",
+        default=None,
+        help="Prompt-split directory. Defaults to the RQ1 refusal splits; "
+        "pass data/processed/persona/<trait> for a persona trait.",
     )
     return parser.parse_args()
 
@@ -67,7 +58,7 @@ def main():
         model.tokenizer,
         [
             row["instruction"]
-            for row in load_processed_split(args.split, "harmful", data_dir=args.data_dir)[: args.num_prompts]
+            for row in load_processed_split(args.split, "harmful", base_dir=args.processed_dir)[: args.num_prompts]
         ],
     )
     target_layer = int(metadata["layer"])
@@ -89,17 +80,14 @@ def main():
         scores_path = args.output_dir / f"{method}_edge_scores.parquet"
         write_edge_scores_parquet(graph, scores_path)
         write_top_edges_summary(graph, args.output_dir / f"top_edges_summary_{method}.md", method=method)
-        if args.skip_paper_circuits:
-            circuit_paths = []
-        else:
-            circuit_paths = write_circuit_jsons(
-                graph,
-                method=method,
-                target_layer=target_layer,
-                target_position=int(metadata["position"]),
-                output_dir=args.output_dir / "circuits",
-                k_values=list(args.k_values),
-            )
+        circuit_paths = write_circuit_jsons(
+            graph,
+            method=method,
+            target_layer=target_layer,
+            target_position=int(metadata["position"]),
+            output_dir=args.output_dir / "circuits",
+            k_values=list(args.k_values),
+        )
         write_json(
             args.output_dir / f"{method}_run_metadata.json",
             {
@@ -107,7 +95,6 @@ def main():
                 "method": method,
                 "n_prompts": len(prompts),
                 "split": args.split,
-                "data_dir": str(args.data_dir),
                 "ig_steps": args.ig_steps if method == "eapig" else None,
                 "target_hook": target_hook,
                 "graph_granularity": "attention heads and MLPs; Q/K/V input edges retained",
@@ -119,7 +106,6 @@ def main():
                     "to alpha=1 (clean); intervention-aware EAP-IG extension"
                 ),
                 "circuit_selection": "greedy backwards from terminal by absolute score, then recursive pruning",
-                "paper_circuit_jsons_skipped": args.skip_paper_circuits,
                 "circuit_files": [str(path) for path in circuit_paths],
             },
         )

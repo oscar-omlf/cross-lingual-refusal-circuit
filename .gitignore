@@ -214,6 +214,10 @@ tempCodeRunnerFile.py
 /papers.zip
 /results.zip
 
+# One-time persona-vectors checkout (trait prompt files only); not a runtime
+# dependency or nested Git submodule.
+/external/persona_vectors/
+
 # Ruff stuff:
 .ruff_cache/
 
