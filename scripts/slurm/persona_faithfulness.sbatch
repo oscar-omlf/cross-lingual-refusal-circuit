@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=persona-faith
 #SBATCH --account=gpuuva083
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_mig
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=40G
