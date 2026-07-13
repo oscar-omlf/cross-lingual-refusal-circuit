@@ -130,7 +130,7 @@ def main():
                 )
             selected.extend(kept)
         rng.shuffle(selected)
-            path = write_processed_split(split, selected, data_dir=args.data_dir)
+        path = write_processed_split(split, selected, data_dir=args.data_dir)
         print(f"Wrote {len(selected)} balanced, filtered rows to {path}")
 
 
