@@ -1,0 +1,3 @@
+label,n_prompts,clean_log_odds_mean,clean_log_odds_std,clean_log_odds_gt0_rate,global_ablation_log_odds_mean,global_ablation_log_odds_std,global_ablation_log_odds_gt0_rate,global_ablation_kl_clean_to_changed,global_ablation_top1_changed_rate,clean_projection_at_metadata_site_mean,global_ablation_projection_at_metadata_site_mean,metadata_layer,metadata_position,metadata_target_hook
+harmful,32,1.858922330039021,0.8777104281520942,1.0,-8.065125166089523,2.92049180477294,0.0,8.257306635379791,1.0,16.029082968831062,-0.003107832744717598,15,-2,blocks.15.hook_resid_pre
+harmless,32,-8.814488125288694,2.8414864022727024,0.0,-8.671802400514391,3.0722146312686904,0.0,0.12535787117667496,0.0625,0.7883943282067776,-0.0027605146169662476,15,-2,blocks.15.hook_resid_pre

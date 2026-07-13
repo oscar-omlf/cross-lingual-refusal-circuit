@@ -1,0 +1,8 @@
+{
+  "dataset": "PolyRefuse",
+  "generated_text_saved": false,
+  "language": "zh",
+  "metric_name": "english_vector",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "purpose": "Verify standardized clean/corrupt projection baseline before EAP-IG."
+}

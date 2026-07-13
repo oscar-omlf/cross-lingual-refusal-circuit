@@ -1,0 +1,16 @@
+{
+  "anchor_language": "en",
+  "dataset": "PolyRefuse",
+  "language": "de",
+  "layer": 15,
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "normalised": true,
+  "position": -2,
+  "raw_direction_norm": 16.13426357376865,
+  "refusal_token_ids": [
+    17360,
+    40369
+  ],
+  "source": "language-local DIM at common English-selected site",
+  "target_hook": "blocks.15.hook_resid_pre"
+}

@@ -1,0 +1,5 @@
+condition,n_prompts,refusal_substring_rate,refusal_token_logit_margin,generated_text_saved,circuit_requested_k
+normal,8,0.875,-3.2177613973617554,False,500
+refusal_direction_ablated,8,0.0,-15.84112012386322,False,500
+circuit_only,8,0.375,-6.798979997634888,False,500
+circuit_ablated,8,0.375,-9.053312063217163,False,500

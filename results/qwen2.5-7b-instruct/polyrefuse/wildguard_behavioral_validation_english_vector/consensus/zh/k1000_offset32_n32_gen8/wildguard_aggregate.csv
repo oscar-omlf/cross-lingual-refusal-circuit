@@ -1,0 +1,9 @@
+label,condition,n_generated,n_parsed,parse_failure_rate,request_harmful_rate,refusal_rate,response_harmful_rate
+harmful,circuit_ablated,8,8,0.0,1.0,0.375,0.5
+harmful,circuit_only,8,8,0.0,1.0,1.0,0.0
+harmful,direction_ablated,8,8,0.0,1.0,0.0,1.0
+harmful,normal,8,8,0.0,1.0,1.0,0.0
+harmless,circuit_ablated,8,8,0.0,0.0,0.0,0.0
+harmless,circuit_only,8,8,0.0,0.0,0.0,0.0
+harmless,direction_ablated,8,8,0.0,0.0,0.0,0.0
+harmless,normal,8,8,0.0,0.0,0.0,0.0

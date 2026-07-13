@@ -1,5 +1,5 @@
 import numpy as np
-import cmapy
+from matplotlib import colormaps
 
 
 
@@ -21,5 +21,7 @@ def generate_random_color(colorscheme: str) -> str:
         """
         return "#{:02x}{:02x}{:02x}".format(rgb[0], rgb[1], rgb[2])
 
-    return rgb2hex(cmapy.color(colorscheme, np.random.randint(0, 256), rgb_order=True))
+    rgba = colormaps[colorscheme](np.random.random())
+    rgb = tuple(round(channel * 255) for channel in rgba[:3])
+    return rgb2hex(rgb)
     

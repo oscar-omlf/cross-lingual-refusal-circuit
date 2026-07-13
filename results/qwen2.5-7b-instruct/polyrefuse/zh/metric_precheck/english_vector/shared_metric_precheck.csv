@@ -1,0 +1,3 @@
+model,dataset,language,metric_name,split,prompt_class,n_prompts,layer,position,m_clean,m_corrupt,projection_drop_clean_minus_corrupt,first_token_refusal_log_odds_clean,first_token_refusal_log_odds_corrupt,last_token_kl_clean_to_corrupt
+Qwen/Qwen2.5-7B-Instruct,PolyRefuse,zh,english_vector,test,harmful,64,15,-2,19.62860107421875,-0.002451785374432802,19.631052017211914,2.3351907233779974,-14.875024422676333,14.418011665344238
+Qwen/Qwen2.5-7B-Instruct,PolyRefuse,zh,english_vector,test,harmless,64,15,-2,0.2180728018283844,-0.0014944905415177345,0.21956729888916016,-18.397537956704852,-18.408169266980273,0.28051134943962097

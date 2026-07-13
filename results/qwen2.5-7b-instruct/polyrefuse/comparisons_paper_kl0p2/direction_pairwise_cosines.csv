@@ -1,0 +1,13 @@
+comparison,left_language,right_language,cosine
+individually_selected_site_descriptive,de,en,0.379508912563324
+individually_selected_site_descriptive,de,th,0.2869647443294525
+individually_selected_site_descriptive,de,zh,0.45516106486320496
+individually_selected_site_descriptive,en,th,0.5155200958251953
+individually_selected_site_descriptive,en,zh,0.24849125742912292
+individually_selected_site_descriptive,th,zh,0.2675659954547882
+common_english_anchor_site_primary,de,en,0.9642131924629211
+common_english_anchor_site_primary,de,th,0.9616133570671082
+common_english_anchor_site_primary,de,zh,0.957743763923645
+common_english_anchor_site_primary,en,th,0.9350512027740479
+common_english_anchor_site_primary,en,zh,0.9693100452423096
+common_english_anchor_site_primary,th,zh,0.9408876895904541

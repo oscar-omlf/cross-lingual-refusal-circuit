@@ -1,0 +1,6 @@
+condition,n_prompts,refusal_substring_rate,refusal_token_logit_margin,generated_text_saved,circuit_requested_k,circuit_retained_edges,circuit_path
+normal,32,1.0,-2.8026107847690582,False,1000,668,results/gemma-2-2b-it/en/rq1/circuits/eapig_top_1000.json
+refusal_direction_ablated,32,0.0,-14.16882210969925,False,1000,668,results/gemma-2-2b-it/en/rq1/circuits/eapig_top_1000.json
+target_direction_ablated,32,0.96875,-4.4892453998327255,False,1000,668,results/gemma-2-2b-it/en/rq1/circuits/eapig_top_1000.json
+circuit_only,32,0.96875,-3.072619140148163,False,1000,668,results/gemma-2-2b-it/en/rq1/circuits/eapig_top_1000.json
+circuit_ablated,32,0.09375,-11.676874443888664,False,1000,668,results/gemma-2-2b-it/en/rq1/circuits/eapig_top_1000.json
