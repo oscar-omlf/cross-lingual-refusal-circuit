@@ -1,0 +1,21 @@
+{
+  "circuit_family": "local",
+  "circuit_path": "results/qwen2.5-7b-instruct/polyrefuse/th/circuit_discovery_english_vector/circuits_greedy_no_parent_prune_small_to_large/eapig_top_1000.json",
+  "dataset": "PolyRefuse",
+  "direction_path": "results/qwen2.5-7b-instruct/polyrefuse/th/shared_metrics/english_vector/refusal_direction.pt",
+  "generated_text_saved": false,
+  "generation_prompts_per_label_for_wildguard": 8,
+  "language": "th",
+  "max_new_tokens": 32,
+  "metadata_path": "results/qwen2.5-7b-instruct/polyrefuse/th/shared_metrics/english_vector/metadata.json",
+  "metric": "h_15,-2 dot normalized English refusal direction",
+  "metric_name": "english_vector",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "num_prompts_per_label_for_first_token_metrics": 32,
+  "prompt_offset": 32,
+  "raw_wildguard_output_saved": false,
+  "requested_k": 1000,
+  "retained_edges": 1000,
+  "split": "test",
+  "wildguard_model": "allenai/wildguard"
+}

@@ -1,0 +1,29 @@
+{
+  "edges": [
+    {
+      "abs_score": 0.5599559545516968,
+      "name": "input->logits",
+      "qkv": null,
+      "score": 0.5599559545516968,
+      "source": {
+        "name": "input",
+        "type": "input"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    }
+  ],
+  "method": "eapig",
+  "requested_k": 100,
+  "retained_edges": 1,
+  "selection": "paper_greedy_absolute_score_with_recursive_pruning",
+  "target": {
+    "hook": "blocks.14.hook_resid_pre",
+    "layer": 14,
+    "metric": "residual_projection_onto_refusal_direction",
+    "position": -2
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "clean": {
+    "mean_actual_projection": 113.0,
+    "mean_reconstructed_projection": 63.75,
+    "mean_error_projection": -49.25,
+    "max_abs_error": 288.0,
+    "rms_error": 3.08538818359375,
+    "n_sources": 127,
+    "attention_result_to_output": [
+      {
+        "layer": 0,
+        "mean_projection": -0.08740234375,
+        "rms": 0.6822307705879211
+      },
+      {
+        "layer": 1,
+        "mean_projection": 2.40625,
+        "rms": 0.5150406360626221
+      },
+      {
+        "layer": 2,
+        "mean_projection": 1.875,
+        "rms": 0.6263070106506348
+      },
+      {
+        "layer": 3,
+        "mean_projection": 0.421875,
+        "rms": 0.38458290696144104
+      },
+      {
+        "layer": 4,
+        "mean_projection": 0.984375,
+        "rms": 0.5794026255607605
+      },
+      {
+        "layer": 5,
+        "mean_projection": 0.1689453125,
+        "rms": 0.5874183773994446
+      },
+      {
+        "layer": 6,
+        "mean_projection": 2.5,
+        "rms": 0.5734228491783142
+      },
+      {
+        "layer": 7,
+        "mean_projection": 3.6875,
+        "rms": 0.7167007923126221
+      },
+      {
+        "layer": 8,
+        "mean_projection": 1.6484375,
+        "rms": 0.4877527952194214
+      },
+      {
+        "layer": 9,
+        "mean_projection": 3.390625,
+        "rms": 0.47531595826148987
+      },
+      {
+        "layer": 10,
+        "mean_projection": 1.21875,
+        "rms": 0.522428035736084
+      },
+      {
+        "layer": 11,
+        "mean_projection": 10.125,
+        "rms": 0.6180903911590576
+      },
+      {
+        "layer": 12,
+        "mean_projection": -0.28125,
+        "rms": 0.6319705843925476
+      },
+      {
+        "layer": 13,
+        "mean_projection": 20.75,
+        "rms": 0.7423065900802612
+      }
+    ]
+  },
+  "corrupt": {
+    "mean_actual_projection": -0.001953125,
+    "mean_reconstructed_projection": -0.197265625,
+    "mean_error_projection": -0.203125,
+    "max_abs_error": 264.0,
+    "rms_error": 3.0681164264678955,
+    "n_sources": 127,
+    "attention_result_to_output": [
+      {
+        "layer": 0,
+        "mean_projection": -0.08740234375,
+        "rms": 0.677837610244751
+      },
+      {
+        "layer": 1,
+        "mean_projection": 1.2421875,
+        "rms": 0.5125404596328735
+      },
+      {
+        "layer": 2,
+        "mean_projection": 1.171875,
+        "rms": 0.6254488229751587
+      },
+      {
+        "layer": 3,
+        "mean_projection": 0.04931640625,
+        "rms": 0.38620510697364807
+      },
+      {
+        "layer": 4,
+        "mean_projection": -0.0191650390625,
+        "rms": 0.5691534280776978
+      },
+      {
+        "layer": 5,
+        "mean_projection": 0.0234375,
+        "rms": 0.5932615995407104
+      },
+      {
+        "layer": 6,
+        "mean_projection": 0.75,
+        "rms": 0.571770966053009
+      },
+      {
+        "layer": 7,
+        "mean_projection": 1.46875,
+        "rms": 0.7229371070861816
+      },
+      {
+        "layer": 8,
+        "mean_projection": -0.0908203125,
+        "rms": 0.48859307169914246
+      },
+      {
+        "layer": 9,
+        "mean_projection": 0.291015625,
+        "rms": 0.4814486503601074
+      },
+      {
+        "layer": 10,
+        "mean_projection": 0.20703125,
+        "rms": 0.5328507423400879
+      },
+      {
+        "layer": 11,
+        "mean_projection": -0.53515625,
+        "rms": 0.6263575553894043
+      },
+      {
+        "layer": 12,
+        "mean_projection": 0.27734375,
+        "rms": 0.6302698850631714
+      },
+      {
+        "layer": 13,
+        "mean_projection": -0.115234375,
+        "rms": 0.7746750712394714
+      }
+    ]
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "dataset": "PolyRefuse",
+  "filter_protocol": "Wang et al. Qwen2.5-7B first-token refusal log-odds: harmful > 0, harmless < 0.",
+  "language": "en",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "model_slug": "qwen2.5-7b-instruct",
+  "refusal_token_ids": [
+    40,
+    2121
+  ],
+  "refusal_token_protocol": "paper_qwen7b",
+  "source_commit": "985169df2a0b1ba56a95c65d5f60e228f12be4a1",
+  "source_files": {
+    "test/harmful": "external/multilingual_refusal/PolyRefuse/harmful_test_translated_en.json",
+    "test/harmless": "external/multilingual_refusal/PolyRefuse/harmless_test_translated_en.json",
+    "train/harmful": "external/multilingual_refusal/dataset/splits/harmful_train.json",
+    "train/harmless": "external/multilingual_refusal/dataset/splits/harmless_train_200_sampled.json",
+    "val/harmful": "external/multilingual_refusal/dataset/splits/harmful_val.json",
+    "val/harmless": "external/multilingual_refusal/dataset/splits/harmless_val_200_sampled.json"
+  },
+  "source_repository": "https://github.com/mainlp/Multilingual-Refusal",
+  "split_counts": {
+    "test": {
+      "harmful": {
+        "length_eligible_count": 572,
+        "mean_score_before_filter": 5.361119488521212,
+        "score_negative_count": 45,
+        "score_positive_count": 527,
+        "selected_count": 64,
+        "source_count": 572
+      },
+      "harmless": {
+        "length_eligible_count": 500,
+        "mean_score_before_filter": -14.566894286332186,
+        "score_negative_count": 487,
+        "score_positive_count": 13,
+        "selected_count": 64,
+        "source_count": 500
+      }
+    },
+    "train": {
+      "harmful": {
+        "length_eligible_count": 260,
+        "mean_score_before_filter": 6.01184349934069,
+        "score_negative_count": 13,
+        "score_positive_count": 247,
+        "selected_count": 128,
+        "source_count": 260
+      },
+      "harmless": {
+        "length_eligible_count": 200,
+        "mean_score_before_filter": -14.655034430921077,
+        "score_negative_count": 197,
+        "score_positive_count": 3,
+        "selected_count": 128,
+        "source_count": 200
+      }
+    },
+    "val": {
+      "harmful": {
+        "length_eligible_count": 39,
+        "mean_score_before_filter": 5.705205732431168,
+        "score_negative_count": 2,
+        "score_positive_count": 37,
+        "selected_count": 32,
+        "source_count": 39
+      },
+      "harmless": {
+        "length_eligible_count": 200,
+        "mean_score_before_filter": -14.394045000076295,
+        "score_negative_count": 192,
+        "score_positive_count": 8,
+        "selected_count": 32,
+        "source_count": 200
+      }
+    }
+  }
+}

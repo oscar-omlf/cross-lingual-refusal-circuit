@@ -1,0 +1,31 @@
+{
+  "circuit_files": [
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_10.json",
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_25.json",
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_50.json",
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_100.json",
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_200.json",
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_500.json",
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_1000.json",
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_logit_english_vector_pilot/circuits_greedy_no_parent_prune/eapig_top_2000.json"
+  ],
+  "circuit_selection": "greedy backwards from logits by absolute score; no parentless recursive pruning",
+  "corrupt_baseline": "same harmful prompt with global refusal-direction ablation",
+  "data_dir": "data/processed/qwen2.5-7b-instruct/polyrefuse/en",
+  "direction_path": "results/qwen2.5-7b-instruct/polyrefuse/en/shared_metrics/english_vector/refusal_direction.pt",
+  "graph_granularity": "attention heads and MLPs; Q/K/V input edges retained",
+  "ig_steps": 3,
+  "input_source": "blocks.0.hook_resid_pre (post-ablation in corrupt run)",
+  "interpolation_path": "global refusal-direction ablation strength alpha=0 (corrupt) to alpha=1 (clean); intervention-aware EAP-IG extension",
+  "metadata_path": "results/qwen2.5-7b-instruct/polyrefuse/en/shared_metrics/english_vector/metadata.json",
+  "method": "eapig",
+  "metric": "next-token log(P(refusal-start tokens)/(1-P(refusal-start tokens)))",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "n_prompts": 16,
+  "refusal_token_ids": [
+    40,
+    2121
+  ],
+  "split": "train",
+  "target": "ordinary EAP logit node at final prompt position"
+}

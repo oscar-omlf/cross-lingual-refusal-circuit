@@ -1,0 +1,14 @@
+{
+  "all_edge_nonzero_scores": 21064,
+  "backward_hook_calls": 0,
+  "backward_hook_l2": [],
+  "backward_hook_nonzero_positions": [],
+  "capture_gradient_l2": 0.9999850392341614,
+  "capture_gradient_present": true,
+  "metric": 128.0,
+  "target_hook": "blocks.14.hook_resid_pre",
+  "target_position": -2,
+  "terminal_edge_count": 127,
+  "terminal_edge_max_abs_score": 22.931612014770508,
+  "terminal_edge_nonzero_scores": 127
+}

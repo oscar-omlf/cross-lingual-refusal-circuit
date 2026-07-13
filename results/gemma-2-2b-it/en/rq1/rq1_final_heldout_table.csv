@@ -1,0 +1,13 @@
+score_split,evaluation_split,metric,method,requested_k,retained_edges,faithfulness,necessity,mean_matched_random_faithfulness,n_harmful_prompts,eligible_edges
+train,test,refusal_projection,eapig,50,0,0.000084,0.000000,0.000084,64,21064
+train,test,refusal_projection,eapig,100,1,-0.004709,-0.004566,0.000370,64,21064
+train,test,refusal_projection,eapig,200,1,-0.004709,-0.004566,0.000390,64,21064
+train,test,refusal_projection,eapig,500,134,0.378995,0.721461,0.000378,64,21064
+train,test,refusal_projection,eapig,1000,636,0.858447,0.931507,0.007028,64,21064
+train,test,refusal_projection,eapig,2000,1444,0.913242,0.958904,0.038014,64,21064
+train,test,refusal_projection,eap,50,0,0.000084,0.000000,0.000084,64,21064
+train,test,refusal_projection,eap,100,0,0.000084,0.000000,0.000084,64,21064
+train,test,refusal_projection,eap,200,1,-0.004709,-0.004566,0.000390,64,21064
+train,test,refusal_projection,eap,500,132,0.351598,0.721461,0.000280,64,21064
+train,test,refusal_projection,eap,1000,594,0.753425,0.913242,0.007021,64,21064
+train,test,refusal_projection,eap,2000,1515,0.863014,0.963470,0.038727,64,21064

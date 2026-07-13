@@ -1,0 +1,32 @@
+{
+  "dataset": "PolyRefuse",
+  "language": "en",
+  "layer": 15,
+  "method": "standardized_common_site_refusal_projection",
+  "metric_name": "common_mean",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "normalised": true,
+  "notes": "The same residual direction is used for every target language; language-specific refusal_token_ids are retained only for logit-margin diagnostics.",
+  "position": -2,
+  "refusal_token_ids": [
+    40,
+    2121
+  ],
+  "source": "normalized mean of language-local anchor DIM vectors: en,de,zh,th",
+  "source_anchor_cosines": {
+    "de": 0.9877786040306091,
+    "en": 0.9839643836021423,
+    "th": 0.9760739803314209,
+    "zh": 0.9838036298751831
+  },
+  "source_anchor_metadata": "/gpfs/home4/scur0121/cross-lingual-refusal-circuit/results/qwen2.5-7b-instruct/polyrefuse/en/direction_paper_kl0p2/anchor_direction_metadata.json",
+  "source_language": "en",
+  "source_languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "source_vector_path": null,
+  "target_hook": "blocks.15.hook_resid_pre"
+}

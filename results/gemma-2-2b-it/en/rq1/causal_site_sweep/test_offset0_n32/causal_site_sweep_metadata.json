@@ -1,0 +1,78 @@
+{
+  "batch_size": 8,
+  "data_dir": "data/processed/gemma-2-2b-it/en/rq1",
+  "direction_path": "results/gemma-2-2b-it/en/rq1/refusal_direction.pt",
+  "generated_text_saved": false,
+  "labels": [
+    "harmful",
+    "harmless"
+  ],
+  "layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25
+  ],
+  "max_length": 512,
+  "metadata_path": "results/gemma-2-2b-it/en/rq1/refusal_direction_metadata.json",
+  "metric": "next-token refusal log-odds under local resid_pre direction ablation",
+  "model": "google/gemma-2-2b-it",
+  "num_prompts": 32,
+  "positions": [
+    -5,
+    -4,
+    -3,
+    -2,
+    -1
+  ],
+  "prompt_offset": 0,
+  "raw_prompts_saved": false,
+  "refusal_token_ids": [
+    235285
+  ],
+  "split": "test",
+  "template_positions": [
+    {
+      "decoded_template_token": "<end_of_turn>",
+      "position": -5
+    },
+    {
+      "decoded_template_token": "\n",
+      "position": -4
+    },
+    {
+      "decoded_template_token": "<start_of_turn>",
+      "position": -3
+    },
+    {
+      "decoded_template_token": "model",
+      "position": -2
+    },
+    {
+      "decoded_template_token": "\n",
+      "position": -1
+    }
+  ]
+}

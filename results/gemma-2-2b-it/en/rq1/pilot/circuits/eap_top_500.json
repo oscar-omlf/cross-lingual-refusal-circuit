@@ -1,0 +1,2460 @@
+{
+  "edges": [
+    {
+      "abs_score": 0.19571667909622192,
+      "name": "input->m10",
+      "qkv": null,
+      "score": -0.19571667909622192,
+      "source": {
+        "name": "input",
+        "type": "input"
+      },
+      "target": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.3385208547115326,
+      "name": "m10->a11.h1<q>",
+      "qkv": "q",
+      "score": -0.3385208547115326,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 11,
+        "name": "a11.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.44324547052383423,
+      "name": "m10->a11.h1<v>",
+      "qkv": "v",
+      "score": -0.44324547052383423,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 11,
+        "name": "a11.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.17024505138397217,
+      "name": "m10->a11.h3<v>",
+      "qkv": "v",
+      "score": 0.17024505138397217,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 3,
+        "layer": 11,
+        "name": "a11.h3",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.36792925000190735,
+      "name": "m10->a11.h4<v>",
+      "qkv": "v",
+      "score": 0.36792925000190735,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 4,
+        "layer": 11,
+        "name": "a11.h4",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.6342909336090088,
+      "name": "m10->a11.h5<v>",
+      "qkv": "v",
+      "score": -0.6342909336090088,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 5,
+        "layer": 11,
+        "name": "a11.h5",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.48171016573905945,
+      "name": "m10->a11.h6<q>",
+      "qkv": "q",
+      "score": -0.48171016573905945,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 6,
+        "layer": 11,
+        "name": "a11.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.7850041389465332,
+      "name": "m10->a11.h6<v>",
+      "qkv": "v",
+      "score": -0.7850041389465332,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 6,
+        "layer": 11,
+        "name": "a11.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.40170541405677795,
+      "name": "m10->a11.h7<v>",
+      "qkv": "v",
+      "score": -0.40170541405677795,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 7,
+        "layer": 11,
+        "name": "a11.h7",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 1.8270152807235718,
+      "name": "m10->m11",
+      "qkv": null,
+      "score": 1.8270152807235718,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.18514899909496307,
+      "name": "a11.h1->m11",
+      "qkv": null,
+      "score": -0.18514899909496307,
+      "source": {
+        "head": 1,
+        "layer": 11,
+        "name": "a11.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.24927212297916412,
+      "name": "a11.h4->m11",
+      "qkv": null,
+      "score": -0.24927212297916412,
+      "source": {
+        "head": 4,
+        "layer": 11,
+        "name": "a11.h4",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.21621036529541016,
+      "name": "a11.h6->m11",
+      "qkv": null,
+      "score": -0.21621036529541016,
+      "source": {
+        "head": 6,
+        "layer": 11,
+        "name": "a11.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.40362024307250977,
+      "name": "m10->a12.h0<v>",
+      "qkv": "v",
+      "score": 0.40362024307250977,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 0,
+        "layer": 12,
+        "name": "a12.h0",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2244916409254074,
+      "name": "m10->a12.h1<v>",
+      "qkv": "v",
+      "score": -0.2244916409254074,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 12,
+        "name": "a12.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.1583959311246872,
+      "name": "m10->a12.h2<q>",
+      "qkv": "q",
+      "score": -0.1583959311246872,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.6301604509353638,
+      "name": "m10->a12.h2<v>",
+      "qkv": "v",
+      "score": 0.6301604509353638,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.20819614827632904,
+      "name": "m10->a12.h3<q>",
+      "qkv": "q",
+      "score": 0.20819614827632904,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.48356661200523376,
+      "name": "m10->a12.h3<v>",
+      "qkv": "v",
+      "score": -0.48356661200523376,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.27314531803131104,
+      "name": "m10->a12.h4<v>",
+      "qkv": "v",
+      "score": -0.27314531803131104,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 4,
+        "layer": 12,
+        "name": "a12.h4",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.1491125077009201,
+      "name": "a11.h1->a12.h6<v>",
+      "qkv": "v",
+      "score": -0.1491125077009201,
+      "source": {
+        "head": 1,
+        "layer": 11,
+        "name": "a11.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 6,
+        "layer": 12,
+        "name": "a12.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.14915397763252258,
+      "name": "a11.h5->a12.h2<v>",
+      "qkv": "v",
+      "score": 0.14915397763252258,
+      "source": {
+        "head": 5,
+        "layer": 11,
+        "name": "a11.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.17854097485542297,
+      "name": "a11.h6->a12.h6<v>",
+      "qkv": "v",
+      "score": -0.17854097485542297,
+      "source": {
+        "head": 6,
+        "layer": 11,
+        "name": "a11.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 6,
+        "layer": 12,
+        "name": "a12.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.1514560878276825,
+      "name": "m11->a12.h0<v>",
+      "qkv": "v",
+      "score": -0.1514560878276825,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 0,
+        "layer": 12,
+        "name": "a12.h0",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2947123348712921,
+      "name": "m11->a12.h1<v>",
+      "qkv": "v",
+      "score": 0.2947123348712921,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 12,
+        "name": "a12.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.20895138382911682,
+      "name": "m11->a12.h2<q>",
+      "qkv": "q",
+      "score": 0.20895138382911682,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2528563141822815,
+      "name": "m11->a12.h2<k>",
+      "qkv": "k",
+      "score": 0.2528563141822815,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.518486738204956,
+      "name": "m11->a12.h2<v>",
+      "qkv": "v",
+      "score": 0.518486738204956,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.23457232117652893,
+      "name": "m11->a12.h3<q>",
+      "qkv": "q",
+      "score": 0.23457232117652893,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2759374976158142,
+      "name": "m11->a12.h3<k>",
+      "qkv": "k",
+      "score": -0.2759374976158142,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.8951900601387024,
+      "name": "m11->a12.h3<v>",
+      "qkv": "v",
+      "score": -0.8951900601387024,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.14860062301158905,
+      "name": "m11->a12.h4<q>",
+      "qkv": "q",
+      "score": 0.14860062301158905,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 4,
+        "layer": 12,
+        "name": "a12.h4",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.8361913561820984,
+      "name": "m11->a12.h4<v>",
+      "qkv": "v",
+      "score": 0.8361913561820984,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 4,
+        "layer": 12,
+        "name": "a12.h4",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2842162251472473,
+      "name": "m11->a12.h5<k>",
+      "qkv": "k",
+      "score": 0.2842162251472473,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 5,
+        "layer": 12,
+        "name": "a12.h5",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.4158303737640381,
+      "name": "m11->a12.h5<v>",
+      "qkv": "v",
+      "score": 0.4158303737640381,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 5,
+        "layer": 12,
+        "name": "a12.h5",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.46996402740478516,
+      "name": "m11->a12.h6<v>",
+      "qkv": "v",
+      "score": 0.46996402740478516,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 6,
+        "layer": 12,
+        "name": "a12.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.40334126353263855,
+      "name": "m11->a12.h7<v>",
+      "qkv": "v",
+      "score": 0.40334126353263855,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 7,
+        "layer": 12,
+        "name": "a12.h7",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.20816485583782196,
+      "name": "input->m12",
+      "qkv": null,
+      "score": -0.20816485583782196,
+      "source": {
+        "name": "input",
+        "type": "input"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 3.756103038787842,
+      "name": "m10->m12",
+      "qkv": null,
+      "score": -3.756103038787842,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.6699161529541016,
+      "name": "a11.h1->m12",
+      "qkv": null,
+      "score": 1.6699161529541016,
+      "source": {
+        "head": 1,
+        "layer": 11,
+        "name": "a11.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.2241449356079102,
+      "name": "a11.h3->m12",
+      "qkv": null,
+      "score": 1.2241449356079102,
+      "source": {
+        "head": 3,
+        "layer": 11,
+        "name": "a11.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.1263154745101929,
+      "name": "a11.h4->m12",
+      "qkv": null,
+      "score": 1.1263154745101929,
+      "source": {
+        "head": 4,
+        "layer": 11,
+        "name": "a11.h4",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.5754520893096924,
+      "name": "a11.h5->m12",
+      "qkv": null,
+      "score": 1.5754520893096924,
+      "source": {
+        "head": 5,
+        "layer": 11,
+        "name": "a11.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.3118505477905273,
+      "name": "a11.h6->m12",
+      "qkv": null,
+      "score": 2.3118505477905273,
+      "source": {
+        "head": 6,
+        "layer": 11,
+        "name": "a11.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.5543683767318726,
+      "name": "a11.h7->m12",
+      "qkv": null,
+      "score": 1.5543683767318726,
+      "source": {
+        "head": 7,
+        "layer": 11,
+        "name": "a11.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 13.188507080078125,
+      "name": "m11->m12",
+      "qkv": null,
+      "score": 13.188507080078125,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.32971206307411194,
+      "name": "a12.h0->m12",
+      "qkv": null,
+      "score": 0.32971206307411194,
+      "source": {
+        "head": 0,
+        "layer": 12,
+        "name": "a12.h0",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.9472065567970276,
+      "name": "a12.h1->m12",
+      "qkv": null,
+      "score": 0.9472065567970276,
+      "source": {
+        "head": 1,
+        "layer": 12,
+        "name": "a12.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.21852481365203857,
+      "name": "a12.h2->m12",
+      "qkv": null,
+      "score": -0.21852481365203857,
+      "source": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.3258085250854492,
+      "name": "a12.h3->m12",
+      "qkv": null,
+      "score": 1.3258085250854492,
+      "source": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.8962915539741516,
+      "name": "a12.h4->m12",
+      "qkv": null,
+      "score": 0.8962915539741516,
+      "source": {
+        "head": 4,
+        "layer": 12,
+        "name": "a12.h4",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.0124565362930298,
+      "name": "a12.h5->m12",
+      "qkv": null,
+      "score": 1.0124565362930298,
+      "source": {
+        "head": 5,
+        "layer": 12,
+        "name": "a12.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.3416210412979126,
+      "name": "a12.h6->m12",
+      "qkv": null,
+      "score": -0.3416210412979126,
+      "source": {
+        "head": 6,
+        "layer": 12,
+        "name": "a12.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.061584711074829,
+      "name": "a12.h7->m12",
+      "qkv": null,
+      "score": 1.061584711074829,
+      "source": {
+        "head": 7,
+        "layer": 12,
+        "name": "a12.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.21811047196388245,
+      "name": "m10->a13.h0<q>",
+      "qkv": "q",
+      "score": 0.21811047196388245,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 0,
+        "layer": 13,
+        "name": "a13.h0",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.29938021302223206,
+      "name": "m10->a13.h0<v>",
+      "qkv": "v",
+      "score": -0.29938021302223206,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 0,
+        "layer": 13,
+        "name": "a13.h0",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.4860855042934418,
+      "name": "m10->a13.h2<q>",
+      "qkv": "q",
+      "score": 0.4860855042934418,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.6111479997634888,
+      "name": "m10->a13.h2<k>",
+      "qkv": "k",
+      "score": -0.6111479997634888,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 1.6409262418746948,
+      "name": "m10->a13.h2<v>",
+      "qkv": "v",
+      "score": -1.6409262418746948,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.34000372886657715,
+      "name": "m10->a13.h6<v>",
+      "qkv": "v",
+      "score": -0.34000372886657715,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 6,
+        "layer": 13,
+        "name": "a13.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.1754712015390396,
+      "name": "m10->a13.h7<v>",
+      "qkv": "v",
+      "score": -0.1754712015390396,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 7,
+        "layer": 13,
+        "name": "a13.h7",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2832212746143341,
+      "name": "a11.h1->a13.h2<v>",
+      "qkv": "v",
+      "score": -0.2832212746143341,
+      "source": {
+        "head": 1,
+        "layer": 11,
+        "name": "a11.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.1743360161781311,
+      "name": "a11.h4->a13.h2<v>",
+      "qkv": "v",
+      "score": 0.1743360161781311,
+      "source": {
+        "head": 4,
+        "layer": 11,
+        "name": "a11.h4",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.44987252354621887,
+      "name": "a11.h5->a13.h2<v>",
+      "qkv": "v",
+      "score": -0.44987252354621887,
+      "source": {
+        "head": 5,
+        "layer": 11,
+        "name": "a11.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.23615437746047974,
+      "name": "a11.h5->a13.h6<v>",
+      "qkv": "v",
+      "score": -0.23615437746047974,
+      "source": {
+        "head": 5,
+        "layer": 11,
+        "name": "a11.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 6,
+        "layer": 13,
+        "name": "a13.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.549207866191864,
+      "name": "a11.h6->a13.h2<v>",
+      "qkv": "v",
+      "score": -0.549207866191864,
+      "source": {
+        "head": 6,
+        "layer": 11,
+        "name": "a11.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.29088982939720154,
+      "name": "a11.h7->a13.h2<v>",
+      "qkv": "v",
+      "score": -0.29088982939720154,
+      "source": {
+        "head": 7,
+        "layer": 11,
+        "name": "a11.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.29416337609291077,
+      "name": "m11->a13.h0<q>",
+      "qkv": "q",
+      "score": 0.29416337609291077,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 0,
+        "layer": 13,
+        "name": "a13.h0",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2749432325363159,
+      "name": "m11->a13.h0<v>",
+      "qkv": "v",
+      "score": 0.2749432325363159,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 0,
+        "layer": 13,
+        "name": "a13.h0",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.8100506067276001,
+      "name": "m11->a13.h1<q>",
+      "qkv": "q",
+      "score": 0.8100506067276001,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 13,
+        "name": "a13.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.7002948522567749,
+      "name": "m11->a13.h1<k>",
+      "qkv": "k",
+      "score": 0.7002948522567749,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 13,
+        "name": "a13.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.7015647888183594,
+      "name": "m11->a13.h2<q>",
+      "qkv": "q",
+      "score": 0.7015647888183594,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.8649192452430725,
+      "name": "m11->a13.h2<k>",
+      "qkv": "k",
+      "score": -0.8649192452430725,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 4.392779350280762,
+      "name": "m11->a13.h2<v>",
+      "qkv": "v",
+      "score": -4.392779350280762,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2152128517627716,
+      "name": "m11->a13.h3<q>",
+      "qkv": "q",
+      "score": -0.2152128517627716,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 3,
+        "layer": 13,
+        "name": "a13.h3",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.14979521930217743,
+      "name": "m11->a13.h4<v>",
+      "qkv": "v",
+      "score": 0.14979521930217743,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 4,
+        "layer": 13,
+        "name": "a13.h4",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.19738484919071198,
+      "name": "m11->a13.h5<q>",
+      "qkv": "q",
+      "score": 0.19738484919071198,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 5,
+        "layer": 13,
+        "name": "a13.h5",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.22163283824920654,
+      "name": "m11->a13.h5<v>",
+      "qkv": "v",
+      "score": 0.22163283824920654,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 5,
+        "layer": 13,
+        "name": "a13.h5",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 1.6808582544326782,
+      "name": "m11->a13.h6<v>",
+      "qkv": "v",
+      "score": -1.6808582544326782,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 6,
+        "layer": 13,
+        "name": "a13.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.30234014987945557,
+      "name": "m11->a13.h7<q>",
+      "qkv": "q",
+      "score": -0.30234014987945557,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 7,
+        "layer": 13,
+        "name": "a13.h7",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.19102530181407928,
+      "name": "a12.h0->a13.h2<v>",
+      "qkv": "v",
+      "score": 0.19102530181407928,
+      "source": {
+        "head": 0,
+        "layer": 12,
+        "name": "a12.h0",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.15169836580753326,
+      "name": "a12.h2->a13.h1<k>",
+      "qkv": "k",
+      "score": -0.15169836580753326,
+      "source": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 1,
+        "layer": 13,
+        "name": "a13.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.8414995074272156,
+      "name": "a12.h2->a13.h2<v>",
+      "qkv": "v",
+      "score": 0.8414995074272156,
+      "source": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2213127315044403,
+      "name": "a12.h2->a13.h6<v>",
+      "qkv": "v",
+      "score": 0.2213127315044403,
+      "source": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 6,
+        "layer": 13,
+        "name": "a13.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.28680238127708435,
+      "name": "a12.h3->a13.h2<v>",
+      "qkv": "v",
+      "score": -0.28680238127708435,
+      "source": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.21111267805099487,
+      "name": "a12.h3->a13.h6<v>",
+      "qkv": "v",
+      "score": -0.21111267805099487,
+      "source": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 6,
+        "layer": 13,
+        "name": "a13.h6",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.15473820269107819,
+      "name": "a12.h7->a13.h2<v>",
+      "qkv": "v",
+      "score": 0.15473820269107819,
+      "source": {
+        "head": 7,
+        "layer": 12,
+        "name": "a12.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.18288081884384155,
+      "name": "m12->a13.h0<v>",
+      "qkv": "v",
+      "score": 0.18288081884384155,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 0,
+        "layer": 13,
+        "name": "a13.h0",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.3271999955177307,
+      "name": "m12->a13.h1<q>",
+      "qkv": "q",
+      "score": -0.3271999955177307,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 13,
+        "name": "a13.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.5255847573280334,
+      "name": "m12->a13.h1<k>",
+      "qkv": "k",
+      "score": 0.5255847573280334,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 13,
+        "name": "a13.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.39862680435180664,
+      "name": "m12->a13.h1<v>",
+      "qkv": "v",
+      "score": 0.39862680435180664,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 1,
+        "layer": 13,
+        "name": "a13.h1",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 1.1416449546813965,
+      "name": "m12->a13.h2<q>",
+      "qkv": "q",
+      "score": 1.1416449546813965,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.6519981026649475,
+      "name": "m12->a13.h2<k>",
+      "qkv": "k",
+      "score": -0.6519981026649475,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.6964090466499329,
+      "name": "m12->a13.h2<v>",
+      "qkv": "v",
+      "score": -0.6964090466499329,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.17104151844978333,
+      "name": "m12->a13.h3<q>",
+      "qkv": "q",
+      "score": -0.17104151844978333,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 3,
+        "layer": 13,
+        "name": "a13.h3",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.22713860869407654,
+      "name": "m12->a13.h7<q>",
+      "qkv": "q",
+      "score": 0.22713860869407654,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 7,
+        "layer": 13,
+        "name": "a13.h7",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.37583693861961365,
+      "name": "m12->a13.h7<v>",
+      "qkv": "v",
+      "score": 0.37583693861961365,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "head": 7,
+        "layer": 13,
+        "name": "a13.h7",
+        "type": "attention_head"
+      }
+    },
+    {
+      "abs_score": 0.2960657775402069,
+      "name": "input->m13",
+      "qkv": null,
+      "score": 0.2960657775402069,
+      "source": {
+        "name": "input",
+        "type": "input"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.6548385620117188,
+      "name": "m10->m13",
+      "qkv": null,
+      "score": 2.6548385620117188,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.1240078210830688,
+      "name": "a11.h1->m13",
+      "qkv": null,
+      "score": -1.1240078210830688,
+      "source": {
+        "head": 1,
+        "layer": 11,
+        "name": "a11.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.8726004362106323,
+      "name": "a11.h3->m13",
+      "qkv": null,
+      "score": -0.8726004362106323,
+      "source": {
+        "head": 3,
+        "layer": 11,
+        "name": "a11.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.8111528158187866,
+      "name": "a11.h4->m13",
+      "qkv": null,
+      "score": -0.8111528158187866,
+      "source": {
+        "head": 4,
+        "layer": 11,
+        "name": "a11.h4",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.0937548875808716,
+      "name": "a11.h5->m13",
+      "qkv": null,
+      "score": -1.0937548875808716,
+      "source": {
+        "head": 5,
+        "layer": 11,
+        "name": "a11.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.5999622344970703,
+      "name": "a11.h6->m13",
+      "qkv": null,
+      "score": -1.5999622344970703,
+      "source": {
+        "head": 6,
+        "layer": 11,
+        "name": "a11.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 1.060960292816162,
+      "name": "a11.h7->m13",
+      "qkv": null,
+      "score": -1.060960292816162,
+      "source": {
+        "head": 7,
+        "layer": 11,
+        "name": "a11.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 8.736242294311523,
+      "name": "m11->m13",
+      "qkv": null,
+      "score": -8.736242294311523,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.4102419316768646,
+      "name": "a12.h2->m13",
+      "qkv": null,
+      "score": 0.4102419316768646,
+      "source": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.35269710421562195,
+      "name": "a12.h3->m13",
+      "qkv": null,
+      "score": -0.35269710421562195,
+      "source": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.197592094540596,
+      "name": "a12.h6->m13",
+      "qkv": null,
+      "score": 0.197592094540596,
+      "source": {
+        "head": 6,
+        "layer": 12,
+        "name": "a12.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 8.955141067504883,
+      "name": "m12->m13",
+      "qkv": null,
+      "score": 8.955141067504883,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.6182610988616943,
+      "name": "a13.h0->m13",
+      "qkv": null,
+      "score": -2.6182610988616943,
+      "source": {
+        "head": 0,
+        "layer": 13,
+        "name": "a13.h0",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.5900869369506836,
+      "name": "a13.h1->m13",
+      "qkv": null,
+      "score": -2.5900869369506836,
+      "source": {
+        "head": 1,
+        "layer": 13,
+        "name": "a13.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 4.330960750579834,
+      "name": "a13.h2->m13",
+      "qkv": null,
+      "score": -4.330960750579834,
+      "source": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.8030028343200684,
+      "name": "a13.h3->m13",
+      "qkv": null,
+      "score": -2.8030028343200684,
+      "source": {
+        "head": 3,
+        "layer": 13,
+        "name": "a13.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.6175696849823,
+      "name": "a13.h4->m13",
+      "qkv": null,
+      "score": -2.6175696849823,
+      "source": {
+        "head": 4,
+        "layer": 13,
+        "name": "a13.h4",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.6902365684509277,
+      "name": "a13.h5->m13",
+      "qkv": null,
+      "score": -2.6902365684509277,
+      "source": {
+        "head": 5,
+        "layer": 13,
+        "name": "a13.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.9033985137939453,
+      "name": "a13.h6->m13",
+      "qkv": null,
+      "score": -2.9033985137939453,
+      "source": {
+        "head": 6,
+        "layer": 13,
+        "name": "a13.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 2.667799711227417,
+      "name": "a13.h7->m13",
+      "qkv": null,
+      "score": -2.667799711227417,
+      "source": {
+        "head": 7,
+        "layer": 13,
+        "name": "a13.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.559956431388855,
+      "name": "input->logits",
+      "qkv": null,
+      "score": 0.559956431388855,
+      "source": {
+        "name": "input",
+        "type": "input"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.8041443824768066,
+      "name": "m10->logits",
+      "qkv": null,
+      "score": -1.8041443824768066,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.4651269912719727,
+      "name": "a11.h1->logits",
+      "qkv": null,
+      "score": -1.4651269912719727,
+      "source": {
+        "head": 1,
+        "layer": 11,
+        "name": "a11.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.0020354986190796,
+      "name": "a11.h3->logits",
+      "qkv": null,
+      "score": -1.0020354986190796,
+      "source": {
+        "head": 3,
+        "layer": 11,
+        "name": "a11.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.7952784895896912,
+      "name": "a11.h4->logits",
+      "qkv": null,
+      "score": -0.7952784895896912,
+      "source": {
+        "head": 4,
+        "layer": 11,
+        "name": "a11.h4",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.3652698993682861,
+      "name": "a11.h5->logits",
+      "qkv": null,
+      "score": -1.3652698993682861,
+      "source": {
+        "head": 5,
+        "layer": 11,
+        "name": "a11.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.8681601285934448,
+      "name": "a11.h6->logits",
+      "qkv": null,
+      "score": -1.8681601285934448,
+      "source": {
+        "head": 6,
+        "layer": 11,
+        "name": "a11.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 1.1109946966171265,
+      "name": "a11.h7->logits",
+      "qkv": null,
+      "score": -1.1109946966171265,
+      "source": {
+        "head": 7,
+        "layer": 11,
+        "name": "a11.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 17.217308044433594,
+      "name": "m11->logits",
+      "qkv": null,
+      "score": -17.217308044433594,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.17592696845531464,
+      "name": "a12.h0->logits",
+      "qkv": null,
+      "score": 0.17592696845531464,
+      "source": {
+        "head": 0,
+        "layer": 12,
+        "name": "a12.h0",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.25219643115997314,
+      "name": "a12.h1->logits",
+      "qkv": null,
+      "score": -0.25219643115997314,
+      "source": {
+        "head": 1,
+        "layer": 12,
+        "name": "a12.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.44824618101119995,
+      "name": "a12.h2->logits",
+      "qkv": null,
+      "score": 0.44824618101119995,
+      "source": {
+        "head": 2,
+        "layer": 12,
+        "name": "a12.h2",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.716180145740509,
+      "name": "a12.h3->logits",
+      "qkv": null,
+      "score": -0.716180145740509,
+      "source": {
+        "head": 3,
+        "layer": 12,
+        "name": "a12.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.1982496976852417,
+      "name": "a12.h5->logits",
+      "qkv": null,
+      "score": -0.1982496976852417,
+      "source": {
+        "head": 5,
+        "layer": 12,
+        "name": "a12.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.2734927833080292,
+      "name": "a12.h6->logits",
+      "qkv": null,
+      "score": 0.2734927833080292,
+      "source": {
+        "head": 6,
+        "layer": 12,
+        "name": "a12.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.26912879943847656,
+      "name": "a12.h7->logits",
+      "qkv": null,
+      "score": -0.26912879943847656,
+      "source": {
+        "head": 7,
+        "layer": 12,
+        "name": "a12.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 11.954032897949219,
+      "name": "m12->logits",
+      "qkv": null,
+      "score": -11.954032897949219,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 2.7636499404907227,
+      "name": "a13.h0->logits",
+      "qkv": null,
+      "score": -2.7636499404907227,
+      "source": {
+        "head": 0,
+        "layer": 13,
+        "name": "a13.h0",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 2.7954494953155518,
+      "name": "a13.h1->logits",
+      "qkv": null,
+      "score": -2.7954494953155518,
+      "source": {
+        "head": 1,
+        "layer": 13,
+        "name": "a13.h1",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 4.550326347351074,
+      "name": "a13.h2->logits",
+      "qkv": null,
+      "score": -4.550326347351074,
+      "source": {
+        "head": 2,
+        "layer": 13,
+        "name": "a13.h2",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 2.7781288623809814,
+      "name": "a13.h3->logits",
+      "qkv": null,
+      "score": -2.7781288623809814,
+      "source": {
+        "head": 3,
+        "layer": 13,
+        "name": "a13.h3",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 2.7658443450927734,
+      "name": "a13.h4->logits",
+      "qkv": null,
+      "score": -2.7658443450927734,
+      "source": {
+        "head": 4,
+        "layer": 13,
+        "name": "a13.h4",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 2.791494846343994,
+      "name": "a13.h5->logits",
+      "qkv": null,
+      "score": -2.791494846343994,
+      "source": {
+        "head": 5,
+        "layer": 13,
+        "name": "a13.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 2.9996397495269775,
+      "name": "a13.h6->logits",
+      "qkv": null,
+      "score": -2.9996397495269775,
+      "source": {
+        "head": 6,
+        "layer": 13,
+        "name": "a13.h6",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 2.7155885696411133,
+      "name": "a13.h7->logits",
+      "qkv": null,
+      "score": -2.7155885696411133,
+      "source": {
+        "head": 7,
+        "layer": 13,
+        "name": "a13.h7",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 25.61640167236328,
+      "name": "m13->logits",
+      "qkv": null,
+      "score": -25.61640167236328,
+      "source": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    }
+  ],
+  "method": "eap",
+  "requested_k": 500,
+  "retained_edges": 144,
+  "selection": "paper_greedy_absolute_score_with_recursive_pruning",
+  "target": {
+    "hook": "blocks.14.hook_resid_pre",
+    "layer": 14,
+    "metric": "residual_projection_onto_refusal_direction",
+    "position": -2
+  }
+}

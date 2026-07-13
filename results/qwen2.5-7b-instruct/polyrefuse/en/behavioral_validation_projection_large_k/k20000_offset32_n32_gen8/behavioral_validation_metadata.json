@@ -1,0 +1,20 @@
+{
+  "circuit_family": "local",
+  "circuit_path": "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_english_vector/circuits_greedy_no_parent_prune_small_to_large/eapig_top_20000.json",
+  "dataset": "PolyRefuse",
+  "direction_path": "results/qwen2.5-7b-instruct/polyrefuse/en/shared_metrics/english_vector/refusal_direction.pt",
+  "generated_text_saved": false,
+  "generation_prompts_per_label": 8,
+  "language": "en",
+  "max_new_tokens": 32,
+  "metadata_path": "results/qwen2.5-7b-instruct/polyrefuse/en/shared_metrics/english_vector/metadata.json",
+  "metric": "h_15,-2 dot normalized English refusal direction",
+  "metric_name": "english_vector",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "notes": "First-token metrics are primary behavioral proxies. Generated completions are only decoded in memory for aggregate substring rates and are not persisted.",
+  "num_prompts_per_label": 32,
+  "prompt_offset": 32,
+  "requested_k": 20000,
+  "retained_edges": 20000,
+  "split": "test"
+}

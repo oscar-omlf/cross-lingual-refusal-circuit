@@ -1,0 +1,78 @@
+{
+  "addition_coefficient": 1.0,
+  "addition_positions": "all",
+  "candidate_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25
+  ],
+  "kl_threshold": 0.1,
+  "late_layer_fraction": 0.8,
+  "layer": 14,
+  "method": "difference_in_means(resid_pre harmful - harmless)",
+  "model": "google/gemma-2-2b-it",
+  "normalised": true,
+  "position": -2,
+  "post_instruction_positions": [
+    -5,
+    -4,
+    -3,
+    -2,
+    -1
+  ],
+  "raw_direction_norm": 138.1157472425491,
+  "refusal_token_ids": [
+    235285
+  ],
+  "selected_validation": {
+    "ablated_harmful_projection": 0.00421142578125,
+    "ablation_projection_drop": 106.0,
+    "added_harmless_projection": 124.5,
+    "addition_projection_gain": 138.0,
+    "bypass_score": -8.06027889251709,
+    "clean_harmful_projection": 106.0,
+    "clean_harmful_refusal_metric": 5.561927318572998,
+    "clean_harmless_projection": -13.875,
+    "clean_harmless_refusal_metric": -11.097853660583496,
+    "harmless_ablation_kl": 0.06927459686994553,
+    "induce_score": 4.647882461547852,
+    "layer": 14,
+    "paper_eligible": true,
+    "position": -2,
+    "raw_norm": 138.1157472425491
+  },
+  "selection_note": "Selected by minimum harmful bypass_score after enforcing induce_score > 0, harmless last-token KL < threshold, and layer < late_layer_fraction * n_layers.",
+  "selection_protocol": "Arditi et al. (2024), Appendix C hard constraints and minimum bypass score",
+  "target_hook": "blocks.14.hook_resid_pre",
+  "train_counts": {
+    "harmful": 128,
+    "harmless": 128
+  },
+  "validation_counts": {
+    "harmful": 32,
+    "harmless": 32
+  }
+}

@@ -1,0 +1,431 @@
+{
+  "edges": [
+    {
+      "abs_score": 0.002291098046749407,
+      "name": "m6->m14",
+      "qkv": null,
+      "score": 0.002291098046749407,
+      "source": {
+        "layer": 6,
+        "name": "m6",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.0018296790158796043,
+      "name": "m9->m14",
+      "qkv": null,
+      "score": 0.0018296790158796043,
+      "source": {
+        "layer": 9,
+        "name": "m9",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.0014961704158591332,
+      "name": "m12->m14",
+      "qkv": null,
+      "score": 0.0014961704158591332,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.001580247447151011,
+      "name": "a13.h5->m14",
+      "qkv": null,
+      "score": -0.001580247447151011,
+      "source": {
+        "head": 5,
+        "layer": 13,
+        "name": "a13.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.002949849027439974,
+      "name": "a13.h14->m14",
+      "qkv": null,
+      "score": -0.002949849027439974,
+      "source": {
+        "head": 14,
+        "layer": 13,
+        "name": "a13.h14",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.0029450899778390633,
+      "name": "m13->m14",
+      "qkv": null,
+      "score": -0.0029450899778390633,
+      "source": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.001472829172301115,
+      "name": "a14.h24->m14",
+      "qkv": null,
+      "score": -0.001472829172301115,
+      "source": {
+        "head": 24,
+        "layer": 14,
+        "name": "a14.h24",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.0013412475002550221,
+      "name": "a14.h25->m14",
+      "qkv": null,
+      "score": 0.0013412475002550221,
+      "source": {
+        "head": 25,
+        "layer": 14,
+        "name": "a14.h25",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      }
+    },
+    {
+      "abs_score": 0.0029822473973295004,
+      "name": "m2->logits",
+      "qkv": null,
+      "score": 0.0029822473973295004,
+      "source": {
+        "layer": 2,
+        "name": "m2",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.007460475222123413,
+      "name": "m6->logits",
+      "qkv": null,
+      "score": 0.007460475222123413,
+      "source": {
+        "layer": 6,
+        "name": "m6",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.0012780916448463305,
+      "name": "m7->logits",
+      "qkv": null,
+      "score": 0.0012780916448463305,
+      "source": {
+        "layer": 7,
+        "name": "m7",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.001869764163997648,
+      "name": "m8->logits",
+      "qkv": null,
+      "score": -0.001869764163997648,
+      "source": {
+        "layer": 8,
+        "name": "m8",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.0018577548104613132,
+      "name": "a9.h16->logits",
+      "qkv": null,
+      "score": -0.0018577548104613132,
+      "source": {
+        "head": 16,
+        "layer": 9,
+        "name": "a9.h16",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.003940382590658546,
+      "name": "m9->logits",
+      "qkv": null,
+      "score": 0.003940382590658546,
+      "source": {
+        "layer": 9,
+        "name": "m9",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.002293368235929133,
+      "name": "m10->logits",
+      "qkv": null,
+      "score": -0.002293368235929133,
+      "source": {
+        "layer": 10,
+        "name": "m10",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.005838574522410321,
+      "name": "m11->logits",
+      "qkv": null,
+      "score": -0.005838574522410321,
+      "source": {
+        "layer": 11,
+        "name": "m11",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.0013694619313889664,
+      "name": "m12->logits",
+      "qkv": null,
+      "score": 0.0013694619313889664,
+      "source": {
+        "layer": 12,
+        "name": "m12",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.003532940993460606,
+      "name": "a13.h5->logits",
+      "qkv": null,
+      "score": -0.003532940993460606,
+      "source": {
+        "head": 5,
+        "layer": 13,
+        "name": "a13.h5",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.007066080819792558,
+      "name": "a13.h14->logits",
+      "qkv": null,
+      "score": -0.007066080819792558,
+      "source": {
+        "head": 14,
+        "layer": 13,
+        "name": "a13.h14",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.001467396810618824,
+      "name": "a13.h15->logits",
+      "qkv": null,
+      "score": -0.001467396810618824,
+      "source": {
+        "head": 15,
+        "layer": 13,
+        "name": "a13.h15",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.011513291474737699,
+      "name": "m13->logits",
+      "qkv": null,
+      "score": -0.011513291474737699,
+      "source": {
+        "layer": 13,
+        "name": "m13",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.0013881083144457655,
+      "name": "a14.h16->logits",
+      "qkv": null,
+      "score": -0.0013881083144457655,
+      "source": {
+        "head": 16,
+        "layer": 14,
+        "name": "a14.h16",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.0016425178974695507,
+      "name": "a14.h18->logits",
+      "qkv": null,
+      "score": -0.0016425178974695507,
+      "source": {
+        "head": 18,
+        "layer": 14,
+        "name": "a14.h18",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.0029028189911330963,
+      "name": "a14.h24->logits",
+      "qkv": null,
+      "score": -0.0029028189911330963,
+      "source": {
+        "head": 24,
+        "layer": 14,
+        "name": "a14.h24",
+        "type": "attention_head"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    },
+    {
+      "abs_score": 0.02751124685934073,
+      "name": "m14->logits",
+      "qkv": null,
+      "score": -0.02751124685934073,
+      "source": {
+        "layer": 14,
+        "name": "m14",
+        "type": "mlp"
+      },
+      "target": {
+        "layer": 15,
+        "name": "refusal_projection",
+        "type": "residual_metric"
+      }
+    }
+  ],
+  "method": "eapig",
+  "requested_k": 25,
+  "retained_edges": 25,
+  "selection": "consensus_mean_signed_scores_l1_abs_paper_greedy_childless_pruning_only",
+  "source_languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "target": {
+    "hook": "blocks.15.hook_resid_pre",
+    "layer": 15,
+    "metric": "residual_projection_onto_refusal_direction",
+    "position": -2
+  }
+}
