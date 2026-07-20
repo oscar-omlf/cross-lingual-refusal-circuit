@@ -1,0 +1,44 @@
+{
+  "canonical_protocol": true,
+  "generation_metadata_sha256": "91603f0ae5d1b25741aa65c28a45f3a1e1064f126be96f103563927c51974230",
+  "gpu_wall_time_seconds": 939.092116355896,
+  "model": {
+    "dtype": "bfloat16",
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+  },
+  "next_required_gate": "canonical GPT-4.1-mini trait/coherence judging",
+  "official_artifact_sha256": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7",
+  "outputs": [
+    {
+      "empty_answers": 0,
+      "hit_max_new_tokens": 0,
+      "max_generated_tokens": 235,
+      "mean_generated_tokens": 97.067,
+      "polarity": "pos",
+      "rows": 1000,
+      "sha256": "883bd1056d22f8780c5a2cec98cfc6baf943d85c210ed003ab30991d71ac3cee"
+    },
+    {
+      "empty_answers": 0,
+      "hit_max_new_tokens": 0,
+      "max_generated_tokens": 629,
+      "mean_generated_tokens": 261.541,
+      "polarity": "neg",
+      "rows": 1000,
+      "sha256": "d1d75a456ac71d69402e034e6d536002cc813cdda4a377e65ba310ca788e0d07"
+    }
+  ],
+  "paired_rows": 1000,
+  "sampling": {
+    "batch_size": 16,
+    "max_new_tokens": 1000,
+    "seed": 0,
+    "temperature": 1.0,
+    "top_p": 1.0
+  },
+  "schema_version": 1,
+  "stage": "S1_generation",
+  "status": "pass",
+  "trait": "sycophantic"
+}

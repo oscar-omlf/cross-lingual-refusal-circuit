@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "trait": {
+    "name": "sycophantic",
+    "positive_assistant_name": "sycophantic",
+    "negative_assistant_name": "helpful"
+  },
+  "official_source": {
+    "repository": "https://github.com/safety-research/persona_vectors",
+    "commit": "b8e0f044fe2410a6fad579f38324f03f13b4e917",
+    "extract_artifact": "data_generation/trait_data_extract/sycophantic.json",
+    "eval_artifact": "data_generation/trait_data_eval/sycophantic.json",
+    "coherence_source": "eval/prompts.py",
+    "expected_sha256": {
+      "extract": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7",
+      "eval": "442a623cb55aa24bda2ba38962a276136771f0637f8f32bd690a144240bba39c",
+      "coherence_source": "ffad02e61e18a5551f46c05879f975b64dc197e9bc0d82d53891e82b93c75c33"
+    }
+  },
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "dtype": "bfloat16"
+  },
+  "extraction": {
+    "questions": 20,
+    "instructions_per_polarity": 5,
+    "rollouts_per_question_instruction": 10,
+    "temperature": 1.0,
+    "top_p": 1.0,
+    "max_new_tokens": 1000,
+    "seed": 0,
+    "generation_batch_size": 16,
+    "activation_batch_size": 1,
+    "trait_threshold": 50.0,
+    "coherence_threshold": 50.0
+  },
+  "judge": {
+    "backend": "openai",
+    "model": "gpt-4.1-mini-2025-04-14",
+    "concurrency": 25,
+    "max_retries": 6,
+    "seed": 0,
+    "top_logprobs": 20
+  },
+  "vector": {
+    "primary_variant": "response_avg_diff",
+    "paper_layer": 20,
+    "hf_hidden_state_index": 20,
+    "transformer_lens_target_hook": "blocks.20.hook_resid_pre",
+    "transformer_lens_steering_block": 19,
+    "target_position": -1
+  },
+  "steering_validation": {
+    "questions": 20,
+    "rollouts_per_question": 10,
+    "temperature": 1.0,
+    "top_p": 1.0,
+    "max_new_tokens": 1000,
+    "seed": 0,
+    "generation_batch_size": 16,
+    "coefficients": [-2.0, -1.0, 0.0, 1.0, 2.0],
+    "positions": "response"
+  },
+  "paths": {
+    "official_root": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917",
+    "intermediate_root": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic",
+    "results_root": "results/qwen2.5-7b-instruct/persona/sycophantic"
+  }
+}

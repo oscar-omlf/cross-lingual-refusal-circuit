@@ -213,6 +213,7 @@ tempCodeRunnerFile.py
 /papers/
 /papers.zip
 /results.zip
+/data/intermediate/persona/
 
 # Ruff stuff:
 .ruff_cache/

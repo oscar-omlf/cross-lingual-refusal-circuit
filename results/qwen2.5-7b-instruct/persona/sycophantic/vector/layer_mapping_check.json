@@ -1,0 +1,11 @@
+{
+  "cosine": 0.9999092817306519,
+  "hf_hidden_state_index": 20,
+  "minimum_cosine": 0.999,
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "pass": true,
+  "relative_l2": 0.01354611199349165,
+  "token_count": 28,
+  "transformer_lens_target_hook": "blocks.20.hook_resid_pre"
+}

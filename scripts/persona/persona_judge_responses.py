@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Score persona responses with the official trait and coherence judge protocol."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import math
+import os
+from pathlib import Path
+
+from _bootstrap import ROOT
+
+
+def _resolve(path: str | Path) -> Path:
+    path = Path(path)
+    return path if path.is_absolute() else ROOT / path
+
+
+async def main_async(args) -> None:
+    from openai import AsyncOpenAI
+    from tqdm.auto import tqdm
+
+    from refusal_circuit.paths import write_json
+    from refusal_circuit.persona import (
+        COHERENCE_PROMPT,
+        aggregate_numeric_logprobs,
+        read_jsonl,
+        sha256_file,
+        write_jsonl,
+    )
+
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError(
+            "OPENAI_API_KEY is required for canonical Persona Vectors filtering. "
+            "Do not substitute an unvalidated local judge for paper evidence."
+        )
+    config = json.loads(args.config.read_text(encoding="utf-8"))
+    judge_cfg = config["judge"]
+    official_root = _resolve(config["paths"]["official_root"])
+    trait_data = json.loads((official_root / f"{args.artifact}.json").read_text(encoding="utf-8"))
+    trait_prompt = trait_data["eval_prompt"]
+    input_path = _resolve(args.input)
+    output_path = _resolve(args.output)
+    rows = read_jsonl(input_path)
+    if not rows:
+        raise ValueError(f"no rows in {input_path}")
+    existing = {}
+    if output_path.exists():
+        if args.overwrite:
+            output_path.unlink()
+        elif args.resume:
+            cached = read_jsonl(output_path)
+            existing = {row["record_id"]: row for row in cached}
+            if len(existing) != len(cached):
+                raise ValueError(f"duplicate record IDs in {output_path}")
+        else:
+            raise FileExistsError(f"{output_path} exists; pass --resume or --overwrite")
+
+    client = AsyncOpenAI()
+    semaphore = asyncio.Semaphore(args.concurrency or int(judge_cfg["concurrency"]))
+    model = args.model or judge_cfg["model"]
+    max_retries = int(judge_cfg["max_retries"])
+
+    async def score(prompt: str) -> tuple[float | None, float]:
+        messages = [{"role": "user", "content": prompt}]
+        for attempt in range(max_retries):
+            try:
+                async with semaphore:
+                    response = await client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        max_tokens=1,
+                        temperature=0,
+                        logprobs=True,
+                        top_logprobs=int(judge_cfg["top_logprobs"]),
+                        seed=int(judge_cfg["seed"]),
+                    )
+                candidates = response.choices[0].logprobs.content[0].top_logprobs
+                probabilities = {candidate.token: math.exp(candidate.logprob) for candidate in candidates}
+                numeric_mass = sum(
+                    probability
+                    for token, probability in probabilities.items()
+                    if token.strip().isdigit() and 0 <= int(token.strip()) <= 100
+                )
+                return aggregate_numeric_logprobs(probabilities), numeric_mass
+            except Exception:
+                if attempt + 1 == max_retries:
+                    raise
+                await asyncio.sleep(min(2**attempt, 30))
+        raise AssertionError("unreachable")
+
+    async def judge_row(row: dict) -> dict:
+        trait_score, trait_mass = await score(
+            trait_prompt.format(question=row["question"], answer=row["answer"])
+        )
+        coherence_score, coherence_mass = await score(
+            COHERENCE_PROMPT.format(question=row["question"], answer=row["answer"])
+        )
+        output = dict(row)
+        output.update(
+            {
+                "trait_score": trait_score,
+                "trait_numeric_mass": trait_mass,
+                "coherence_score": coherence_score,
+                "coherence_numeric_mass": coherence_mass,
+                "judge_model": model,
+                "judge_protocol": "top20_expected_0_100",
+            }
+        )
+        return output
+
+    pending = [row for row in rows if row["record_id"] not in existing]
+    tasks = [asyncio.create_task(judge_row(row)) for row in pending]
+    with tqdm(total=len(tasks), desc="judge persona responses") as progress:
+        for task in asyncio.as_completed(tasks):
+            judged = await task
+            write_jsonl(output_path, [judged], mode="a")
+            progress.update(1)
+    final = read_jsonl(output_path)
+    if len(final) != len(rows) or len({row["record_id"] for row in final}) != len(rows):
+        raise RuntimeError(f"incomplete judged output: {len(final)}/{len(rows)}")
+    metadata = {
+        "schema_version": 1,
+        "status": "complete",
+        "canonical_protocol": True,
+        "input": str(input_path.relative_to(ROOT)),
+        "input_sha256": sha256_file(input_path),
+        "output": str(output_path.relative_to(ROOT)),
+        "output_sha256": sha256_file(output_path),
+        "rows": len(final),
+        "judge_model": model,
+        "rubric_artifact": args.artifact,
+        "trait_score_failures": sum(row["trait_score"] is None for row in final),
+        "coherence_score_failures": sum(row["coherence_score"] is None for row in final),
+    }
+    write_json(output_path.with_suffix(".metadata.json"), metadata)
+    print(json.dumps(metadata, indent=2))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=ROOT / "configs/qwen_sycophancy.json")
+    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--artifact", choices=("extract", "eval"), default="extract")
+    parser.add_argument("--concurrency", type=int, default=None)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args()
+    if args.resume and args.overwrite:
+        raise ValueError("--resume and --overwrite are mutually exclusive")
+    asyncio.run(main_async(args))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,33 @@
+{
+  "artifacts": [
+    {
+      "bytes": 5428,
+      "label": "extract",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/extract.json",
+      "repository_path": "data_generation/trait_data_extract/sycophantic.json",
+      "sha256": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7",
+      "status": "reused",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/data_generation/trait_data_extract/sycophantic.json"
+    },
+    {
+      "bytes": 5508,
+      "label": "eval",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/eval.json",
+      "repository_path": "data_generation/trait_data_eval/sycophantic.json",
+      "sha256": "442a623cb55aa24bda2ba38962a276136771f0637f8f32bd690a144240bba39c",
+      "status": "reused",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/data_generation/trait_data_eval/sycophantic.json"
+    },
+    {
+      "bytes": 1117,
+      "label": "coherence_source",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/coherence_source.py",
+      "repository_path": "eval/prompts.py",
+      "sha256": "ffad02e61e18a5551f46c05879f975b64dc197e9bc0d82d53891e82b93c75c33",
+      "status": "reused",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/eval/prompts.py"
+    }
+  ],
+  "commit": "b8e0f044fe2410a6fad579f38324f03f13b4e917",
+  "repository": "https://github.com/safety-research/persona_vectors"
+}
