@@ -124,6 +124,10 @@ class PersonaProtocolTests(unittest.TestCase):
         )
         self.assertEqual(config["judge"]["model"], "gpt-4.1-mini-2025-04-14")
         self.assertEqual(config["judge"]["top_logprobs"], 20)
+        self.assertLess(
+            config["judge"]["estimated_token_budget_per_minute"],
+            200000,
+        )
         self.assertEqual(config["vector"]["primary_variant"], "response_avg_diff")
         self.assertEqual(
             config["layer_selection"]["candidate_layers_one_indexed"],

@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections import deque
 import json
 import math
 import os
+import time
 from pathlib import Path
 
 from _bootstrap import ROOT
@@ -16,6 +18,41 @@ from _bootstrap import ROOT
 def _resolve(path: str | Path) -> Path:
     path = Path(path)
     return path if path.is_absolute() else ROOT / path
+
+
+class RollingTokenLimiter:
+    """Conservatively throttle estimated prompt tokens over a rolling minute."""
+
+    def __init__(self, *, budget: int, characters_per_token: float) -> None:
+        if budget <= 0 or characters_per_token <= 0:
+            raise ValueError("rate-limit budget and characters-per-token must be positive")
+        self.budget = budget
+        self.characters_per_token = characters_per_token
+        self.events: deque[tuple[float, int]] = deque()
+        self.used = 0
+        self.lock = asyncio.Lock()
+
+    def estimate(self, prompt: str) -> int:
+        # The 32-token allowance covers message framing and the single output
+        # token. Dividing by 2.5 is deliberately conservative for English.
+        return max(1, math.ceil(len(prompt) / self.characters_per_token) + 32)
+
+    async def acquire(self, prompt: str) -> None:
+        requested = self.estimate(prompt)
+        if requested > self.budget:
+            raise ValueError("one judge prompt exceeds the configured minute token budget")
+        while True:
+            async with self.lock:
+                now = time.monotonic()
+                while self.events and now - self.events[0][0] >= 60.0:
+                    _, expired = self.events.popleft()
+                    self.used -= expired
+                if self.used + requested <= self.budget:
+                    self.events.append((now, requested))
+                    self.used += requested
+                    return
+                wait_seconds = max(0.05, 60.0 - (now - self.events[0][0]) + 0.05)
+            await asyncio.sleep(wait_seconds)
 
 
 async def main_async(args) -> None:
@@ -80,11 +117,16 @@ async def main_async(args) -> None:
     if model != judge_cfg["model"]:
         raise ValueError("canonical judging requires the frozen dated GPT-4.1-mini snapshot")
     max_retries = int(judge_cfg["max_retries"])
+    limiter = RollingTokenLimiter(
+        budget=int(judge_cfg["estimated_token_budget_per_minute"]),
+        characters_per_token=float(judge_cfg["estimated_characters_per_token"]),
+    )
 
     async def score(prompt: str) -> tuple[float | None, float]:
         messages = [{"role": "user", "content": prompt}]
         for attempt in range(max_retries):
             try:
+                await limiter.acquire(prompt)
                 async with semaphore:
                     response = await client.chat.completions.create(
                         model=model,
@@ -109,7 +151,7 @@ async def main_async(args) -> None:
             except Exception:
                 if attempt + 1 == max_retries:
                     raise
-                await asyncio.sleep(min(2**attempt, 30))
+                await asyncio.sleep(min(2**attempt, 60) + 0.1 * (attempt % 5))
         raise AssertionError("unreachable")
 
     async def judge_row(row: dict) -> dict:
@@ -153,6 +195,10 @@ async def main_async(args) -> None:
         "output_sha256": sha256_file(output_path),
         "rows": len(final),
         "judge_model": model,
+        "request_concurrency": args.concurrency or int(judge_cfg["concurrency"]),
+        "estimated_token_budget_per_minute": int(
+            judge_cfg["estimated_token_budget_per_minute"]
+        ),
         "rubric_artifact": args.artifact,
         "trait_score_failures": sum(row["trait_score"] is None for row in final),
         "coherence_score_failures": sum(row["coherence_score"] is None for row in final),
