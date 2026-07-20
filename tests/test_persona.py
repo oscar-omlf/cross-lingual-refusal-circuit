@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import unittest
+import json
+import runpy
+from pathlib import Path
 
 from refusal_circuit.persona import (
+    COHERENCE_PROMPT,
     aggregate_numeric_logprobs,
     align_effective_pairs,
     extraction_specs,
@@ -85,6 +89,69 @@ class PersonaProtocolTests(unittest.TestCase):
         self.assertTrue(torch.equal(steered[:, :-1], original[:, :-1]))
         self.assertTrue(torch.equal(steered[:, -1], torch.full((2, 4), 2.0)))
         self.assertTrue(torch.equal(original, torch.zeros_like(original)))
+
+    def test_frozen_upstream_implementation_contract(self):
+        root = Path(__file__).resolve().parents[1]
+        frozen = (
+            root
+            / "data/raw/persona_vectors"
+            / "b8e0f044fe2410a6fad579f38324f03f13b4e917"
+        )
+        config = json.loads((root / "configs/qwen_sycophancy.json").read_text())
+        extraction = config["extraction"]
+        self.assertEqual(
+            {
+                key: extraction[key]
+                for key in (
+                    "questions",
+                    "instructions_per_polarity",
+                    "rollouts_per_question_instruction",
+                    "temperature",
+                    "top_p",
+                    "min_new_tokens",
+                    "max_new_tokens",
+                )
+            },
+            {
+                "questions": 20,
+                "instructions_per_polarity": 5,
+                "rollouts_per_question_instruction": 10,
+                "temperature": 1.0,
+                "top_p": 1.0,
+                "min_new_tokens": 1,
+                "max_new_tokens": 1000,
+            },
+        )
+        self.assertEqual(config["judge"]["model"], "gpt-4.1-mini-2025-04-14")
+        self.assertEqual(config["judge"]["top_logprobs"], 20)
+        self.assertEqual(config["vector"]["primary_variant"], "response_avg_diff")
+        self.assertEqual(
+            config["layer_selection"]["candidate_layers_one_indexed"],
+            [4, 8, 12, 16, 20, 24, 28],
+        )
+
+        eval_source = (frozen / "eval_persona_source.py").read_text()
+        self.assertIn('system = f"You are {a_or_an(assistant_name)} {assistant_name} assistant. {instruction}"', eval_source)
+        self.assertIn("top_p=1, max_tokens=1000, temperature=1, min_tokens=1", eval_source)
+        self.assertIn("n_per_question=10", eval_source)
+        judge_source = (frozen / "judge_source.py").read_text()
+        for expected in (
+            "max_tokens=1",
+            "temperature=0",
+            "logprobs=True",
+            "top_logprobs=20",
+            "seed=0",
+            "if total < 0.25",
+        ):
+            self.assertIn(expected, judge_source)
+        vector_source = (frozen / "generate_vec_source.py").read_text()
+        self.assertIn("outputs.hidden_states[layer][:, prompt_len:, :].mean(dim=1)", vector_source)
+        self.assertIn("persona_effective_response_avg[\"pos\"][l].mean(0).float()", vector_source)
+        self.assertIn("persona_pos[trait] >=threshold", vector_source)
+        self.assertIn('persona_pos["coherence"] >= 50', vector_source)
+
+        upstream_prompts = runpy.run_path(str(frozen / "coherence_source.py"))["Prompts"]
+        self.assertEqual(upstream_prompts["coherence_0_100"], COHERENCE_PROMPT)
 
 
 if __name__ == "__main__":

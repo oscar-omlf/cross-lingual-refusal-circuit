@@ -88,9 +88,23 @@ def main() -> None:
     max_new_tokens = args.max_new_tokens or int(validation["max_new_tokens"])
     seed = int(validation["seed"])
     positions = validation["positions"]
+    canonical_vector_path = vector_root / "sycophantic_response_avg_diff.pt"
+    if vector_path.resolve() != canonical_vector_path.resolve():
+        raise ValueError("canonical layer validation requires the response-average vector stack")
+    frozen_layers = [int(value) for value in config["layer_selection"]["candidate_layers_one_indexed"]]
+    if layer not in frozen_layers:
+        raise ValueError(f"layer {layer} is outside the paper's Qwen grid {frozen_layers}")
+    frozen_coefficients = [float(value) for value in validation["coefficients"]]
+    if any(value not in frozen_coefficients for value in coefficients):
+        raise ValueError("canonical layer validation only permits the paper's steering coefficients")
+    if rollouts != int(validation["rollouts_per_question"]):
+        raise ValueError("canonical layer validation requires the frozen rollout count")
+    if max_new_tokens != int(validation["max_new_tokens"]):
+        raise ValueError("canonical layer validation requires the frozen max-new-tokens value")
     block_index = layer - 1
-    if block_index != int(vector_cfg["transformer_lens_steering_block"]):
-        raise ValueError("steering block disagrees with the frozen HF/TL layer mapping")
+    if layer == int(vector_cfg["paper_layer"]):
+        if block_index != int(vector_cfg["transformer_lens_steering_block"]):
+            raise ValueError("selected steering block disagrees with the frozen layer mapping")
 
     token = os.environ.get("HF_TOKEN")
     tokenizer = AutoTokenizer.from_pretrained(
@@ -112,7 +126,9 @@ def main() -> None:
         raise RuntimeError("could not locate Qwen transformer block for steering") from error
     direction = direction.to(device=args.device, dtype=next(model.parameters()).dtype)
 
-    output_root = _resolve(config["paths"]["intermediate_root"]) / "steering"
+    output_root = (
+        _resolve(config["paths"]["intermediate_root"]) / "steering" / f"layer_{layer:02d}"
+    )
     output_root.mkdir(parents=True, exist_ok=True)
     summaries = []
     started = time.time()
@@ -189,6 +205,7 @@ def main() -> None:
                     {
                         **row,
                         "schema_version": 1,
+                        "steering_protocol_id": config["protocol_id"],
                         "trait": config["trait"]["name"],
                         "model": model_cfg["name"],
                         "model_revision": model_cfg.get("revision"),
@@ -219,6 +236,7 @@ def main() -> None:
         "schema_version": 1,
         "status": "complete",
         "canonical_protocol": True,
+        "steering_protocol_id": config["protocol_id"],
         "model": model_cfg,
         "trait": config["trait"],
         "eval_artifact_sha256": sha256_file(eval_path),

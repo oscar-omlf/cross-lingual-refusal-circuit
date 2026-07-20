@@ -36,6 +36,7 @@ def main() -> None:
         "eval": source["eval_artifact"],
         "coherence_source": source["coherence_source"],
     }
+    artifacts.update(source.get("implementation_sources", {}))
     rows = []
     for label, repository_path in artifacts.items():
         suffix = Path(repository_path).suffix

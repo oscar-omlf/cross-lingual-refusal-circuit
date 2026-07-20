@@ -1,13 +1,13 @@
 {
-  "canonical_protocol": true,
-  "generation_metadata_sha256": "91603f0ae5d1b25741aa65c28a45f3a1e1064f126be96f103563927c51974230",
+  "canonical_protocol": false,
+  "generation_metadata_sha256": "1ab219be271b60d9d7204c941a09e5cec39fa13cc668892d121e32c5783f353b",
   "gpu_wall_time_seconds": 939.092116355896,
   "model": {
     "dtype": "bfloat16",
     "name": "Qwen/Qwen2.5-7B-Instruct",
     "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
   },
-  "next_required_gate": "canonical GPT-4.1-mini trait/coherence judging",
+  "next_required_gate": "regenerate with the frozen protocol before canonical GPT-4.1-mini judging",
   "official_artifact_sha256": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7",
   "outputs": [
     {
@@ -33,12 +33,17 @@
   "sampling": {
     "batch_size": 16,
     "max_new_tokens": 1000,
+    "min_new_tokens": null,
     "seed": 0,
     "temperature": 1.0,
     "top_p": 1.0
   },
   "schema_version": 1,
   "stage": "S1_generation",
-  "status": "pass",
+  "status": "superseded_pilot",
+  "superseded_reasons": [
+    "generation omitted the upstream min_tokens=1 setting",
+    "positive and negative polarities did not each start from a fresh seed-0 process"
+  ],
   "trait": "sycophantic"
 }

@@ -77,6 +77,7 @@ COMMANDS: dict[str, str] = {
     "persona.extract": "persona/persona_extract_response_vector.py",
     "persona.check-layer": "persona/persona_check_layer_mapping.py",
     "persona.steer": "persona/persona_steer_responses.py",
+    "persona.select-layer": "persona/persona_select_layer.py",
     # Cross-RQ diagnostics / reporting.
     "rq.causal-site-sweep": "rq_causal_site_sweep.py",
     "results.summary": "results_summary",
@@ -118,6 +119,7 @@ DESCRIPTIONS: dict[str, str] = {
     "persona.extract": "Filter paired responses and extract the response-average persona vector.",
     "persona.check-layer": "Check the HF-to-TransformerLens persona layer mapping.",
     "persona.steer": "Generate held-out responses under response-time persona steering.",
+    "persona.select-layer": "Aggregate a judged all-layer steering sweep and select informative layers.",
     "rq.causal-site-sweep": "Sweep local projection-ablation sites.",
     "results.summary": "Summarize committed RQ1/RQ2 results into Markdown.",
 }
