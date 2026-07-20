@@ -31,10 +31,15 @@ def main() -> None:
     if manifest["commit"] != source["commit"] or manifest["repository"] != source["repository"]:
         raise RuntimeError("download manifest does not match the frozen source")
 
+    source_paths = {
+        "extract": source["extract_artifact"],
+        "eval": source["eval_artifact"],
+        "coherence_source": source["coherence_source"],
+        **source.get("implementation_sources", {}),
+    }
     actual_hashes = {
-        "extract": sha256_file(root / "extract.json"),
-        "eval": sha256_file(root / "eval.json"),
-        "coherence_source": sha256_file(root / "coherence_source.py"),
+        label: sha256_file(root / f"{label}{Path(repository_path).suffix}")
+        for label, repository_path in source_paths.items()
     }
     if actual_hashes != source["expected_sha256"]:
         raise RuntimeError(f"official artifact hash mismatch: {actual_hashes}")
@@ -86,6 +91,31 @@ def main() -> None:
         raise RuntimeError("HF/TransformerLens endpoint mapping disagrees with config")
     if int(vector["transformer_lens_steering_block"]) != int(vector["paper_layer"]) - 1:
         raise RuntimeError("one-indexed paper layer does not map to the steering block")
+    expected_protocol = {
+        "questions": 20,
+        "instructions_per_polarity": 5,
+        "rollouts_per_question_instruction": 10,
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "min_new_tokens": 1,
+        "max_new_tokens": 1000,
+    }
+    if any(extraction[key] != value for key, value in expected_protocol.items()):
+        raise RuntimeError("extraction parameters differ from the released upstream pipeline")
+    judge = config["judge"]
+    if (
+        judge["model"] != "gpt-4.1-mini-2025-04-14"
+        or int(judge["seed"]) != 0
+        or int(judge["top_logprobs"]) != 20
+    ):
+        raise RuntimeError("judge parameters differ from the released upstream pipeline")
+    if vector["primary_variant"] != "response_avg_diff":
+        raise RuntimeError("the paper's headline vector must be response_avg_diff")
+    selection = config["layer_selection"]
+    if selection["candidate_layers_one_indexed"] != [4, 8, 12, 16, 20, 24, 28]:
+        raise RuntimeError("Qwen layer-selection grid differs from the released paper figure")
+    if int(selection["paper_selected_layer_one_indexed"]) != 20:
+        raise RuntimeError("the paper reports sycophancy layer 20 on Qwen")
 
     has_openai_key = bool(os.environ.get("OPENAI_API_KEY"))
     report = {
@@ -107,6 +137,16 @@ def main() -> None:
         "hf_hidden_state_index": int(vector["hf_hidden_state_index"]),
         "transformer_lens_target_hook": mapped_hook,
         "steering_block_zero_indexed": int(vector["transformer_lens_steering_block"]),
+        "layer_selection_grid_one_indexed": selection["candidate_layers_one_indexed"],
+        "steering_coefficients": config["steering_validation"]["coefficients"],
+        "generation_backend": "Transformers generate",
+        "upstream_generation_backend": "vLLM generate",
+        "scientific_pipeline_equivalent": True,
+        "backend_is_implementation_choice": True,
+        "backend_note": (
+            "Both implement the frozen model/chat template and identical categorical sampling "
+            "parameters; stochastic sample identities are not part of the protocol."
+        ),
         "generation_ready": True,
         "canonical_judge_ready": has_openai_key,
         "canonical_judge_blocker": None if has_openai_key else "OPENAI_API_KEY is not set",

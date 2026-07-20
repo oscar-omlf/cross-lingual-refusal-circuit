@@ -86,6 +86,18 @@ def main() -> None:
         )
     positive_rows = read_jsonl(positive_path)
     negative_rows = read_jsonl(negative_path)
+    for polarity, path in (("positive", positive_path), ("negative", negative_path)):
+        metadata_path = path.with_suffix(".metadata.json")
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"missing canonical judge metadata for {polarity}: {metadata_path}")
+        judged_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if (
+            not judged_metadata.get("canonical_protocol")
+            or judged_metadata.get("generation_protocol_id") != config["protocol_id"]
+            or judged_metadata.get("rubric_artifact") != "extract"
+            or judged_metadata.get("output_sha256") != sha256_file(path)
+        ):
+            raise ValueError(f"{polarity} judged input failed its frozen protocol/hash gate")
     expected = (
         int(extraction["questions"])
         * int(extraction["instructions_per_polarity"])
@@ -96,7 +108,11 @@ def main() -> None:
             f"canonical extraction expects {expected} rows per polarity, got "
             f"{len(positive_rows)} and {len(negative_rows)}"
         )
-    if any(row.get("judge_protocol") != "top20_expected_0_100" for row in positive_rows + negative_rows):
+    if any(
+        row.get("judge_protocol") != "top20_expected_0_100"
+        or row.get("generation_protocol_id") != config["protocol_id"]
+        for row in positive_rows + negative_rows
+    ):
         raise ValueError("noncanonical or missing judge protocol in extraction inputs")
     pairs = align_effective_pairs(
         positive_rows,
@@ -116,13 +132,20 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(
         model_cfg["name"], revision=model_cfg.get("revision"), token=token
     )
-    model = AutoModelForCausalLM.from_pretrained(
-        model_cfg["name"],
-        revision=model_cfg.get("revision"),
-        token=token,
-        torch_dtype=getattr(torch, model_cfg["dtype"]),
-        low_cpu_mem_usage=True,
-    ).to(args.device).eval()
+    model_kwargs = {
+        "revision": model_cfg.get("revision"),
+        "token": token,
+        "low_cpu_mem_usage": True,
+    }
+    activation_dtype = vector_cfg.get("activation_extraction_dtype", "upstream_default")
+    if activation_dtype != "upstream_default":
+        model_kwargs["torch_dtype"] = getattr(torch, activation_dtype)
+    # The released generate_vec.py does not pass torch_dtype. Keeping the
+    # argument absent here reproduces Transformers' upstream-default loading
+    # behavior; an explicit dtype remains available as a documented override.
+    model = AutoModelForCausalLM.from_pretrained(model_cfg["name"], **model_kwargs).to(
+        args.device
+    ).eval()
     expected_hidden_states = int(model.config.num_hidden_layers) + 1
     hidden_size = int(model.config.hidden_size)
     sums = {
@@ -236,9 +259,10 @@ def main() -> None:
             vector_cfg["transformer_lens_steering_block"]
         ),
         "target_position": int(vector_cfg["target_position"]),
+        "activation_extraction_dtype": activation_dtype,
         "raw_direction_norm": raw_norm,
-        "primary_vector_file": "sycophantic_direction.pt",
-        "raw_vector_file": "sycophantic_direction_raw.pt",
+        "paper_selected_raw_vector_file": "sycophantic_direction_raw.pt",
+        "circuit_metric_unit_vector_file": "sycophantic_direction.pt",
         "all_layer_response_vector_file": "sycophantic_response_avg_diff.pt",
         "wall_time_seconds": time.time() - started,
     }

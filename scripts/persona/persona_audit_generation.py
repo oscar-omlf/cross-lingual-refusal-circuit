@@ -46,6 +46,10 @@ def main() -> None:
             raise RuntimeError(f"{polarity} pair IDs are not unique")
         if any(row["polarity"] != polarity for row in rows):
             raise RuntimeError(f"wrong polarity marker in {polarity} output")
+        if any(row.get("generation_protocol_id") != config["protocol_id"] for row in rows):
+            raise RuntimeError(
+                f"{polarity} output predates the frozen exact protocol; regenerate before judging"
+            )
         if any(not row["answer"].strip() for row in rows):
             raise RuntimeError(f"empty answer in {polarity} output")
         expected_hash = next(
@@ -74,6 +78,7 @@ def main() -> None:
         "status": "pass",
         "stage": "S1_generation",
         "canonical_protocol": True,
+        "generation_protocol_id": config["protocol_id"],
         "trait": config["trait"]["name"],
         "model": config["model"],
         "sampling": metadata["generation"],

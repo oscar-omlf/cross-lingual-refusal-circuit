@@ -26,6 +26,60 @@
       "sha256": "ffad02e61e18a5551f46c05879f975b64dc197e9bc0d82d53891e82b93c75c33",
       "status": "reused",
       "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/eval/prompts.py"
+    },
+    {
+      "bytes": 12927,
+      "label": "eval_persona_source",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/eval_persona_source.py",
+      "repository_path": "eval/eval_persona.py",
+      "sha256": "e634b8ddbd4724145554685c99d7a501d088309ab7e712e4af017ec7244d8a5d",
+      "status": "downloaded",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/eval/eval_persona.py"
+    },
+    {
+      "bytes": 6212,
+      "label": "judge_source",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/judge_source.py",
+      "repository_path": "judge.py",
+      "sha256": "560e3f2ed31ef9888415c9d9cb1ae4bed20ac0e2046cfa6d16e7e0426aeffdf2",
+      "status": "downloaded",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/judge.py"
+    },
+    {
+      "bytes": 5250,
+      "label": "generate_vec_source",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/generate_vec_source.py",
+      "repository_path": "generate_vec.py",
+      "sha256": "d77b9f9e739c93f3612940a74c4727cd1a17597653280813ac50b5a9675907e8",
+      "status": "downloaded",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/generate_vec.py"
+    },
+    {
+      "bytes": 6061,
+      "label": "activation_steer_source",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/activation_steer_source.py",
+      "repository_path": "activation_steer.py",
+      "sha256": "d00d3414bb774abac89de8ace23f1279d78b4c7c78b0574785ffc020e7ec5c9e",
+      "status": "downloaded",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/activation_steer.py"
+    },
+    {
+      "bytes": 3457,
+      "label": "model_utils_source",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/model_utils_source.py",
+      "repository_path": "eval/model_utils.py",
+      "sha256": "2f4e1aa154145fc8dd5b30f348eaa2eff8a0da56132bfaceb348be607ef35be7",
+      "status": "downloaded",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/eval/model_utils.py"
+    },
+    {
+      "bytes": 285,
+      "label": "requirements_source",
+      "local_path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/requirements_source.txt",
+      "repository_path": "requirements.txt",
+      "sha256": "ea72f67bc962cdafc5536adff41177cfdd9b2263c1809bd7b9dee0cd972f1719",
+      "status": "downloaded",
+      "url": "https://raw.githubusercontent.com/safety-research/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/requirements.txt"
     }
   ],
   "commit": "b8e0f044fe2410a6fad579f38324f03f13b4e917",

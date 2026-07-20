@@ -1,16 +1,34 @@
 {
   "artifact_sha256": {
+    "activation_steer_source": "d00d3414bb774abac89de8ace23f1279d78b4c7c78b0574785ffc020e7ec5c9e",
     "coherence_source": "ffad02e61e18a5551f46c05879f975b64dc197e9bc0d82d53891e82b93c75c33",
     "eval": "442a623cb55aa24bda2ba38962a276136771f0637f8f32bd690a144240bba39c",
-    "extract": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7"
+    "eval_persona_source": "e634b8ddbd4724145554685c99d7a501d088309ab7e712e4af017ec7244d8a5d",
+    "extract": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7",
+    "generate_vec_source": "d77b9f9e739c93f3612940a74c4727cd1a17597653280813ac50b5a9675907e8",
+    "judge_source": "560e3f2ed31ef9888415c9d9cb1ae4bed20ac0e2046cfa6d16e7e0426aeffdf2",
+    "model_utils_source": "2f4e1aa154145fc8dd5b30f348eaa2eff8a0da56132bfaceb348be607ef35be7",
+    "requirements_source": "ea72f67bc962cdafc5536adff41177cfdd9b2263c1809bd7b9dee0cd972f1719"
   },
+  "backend_is_implementation_choice": true,
+  "backend_note": "Both implement the frozen model/chat template and identical categorical sampling parameters; stochastic sample identities are not part of the protocol.",
   "canonical_judge_blocker": "OPENAI_API_KEY is not set",
   "canonical_judge_ready": false,
   "extract_eval_question_overlap": 0,
   "extract_questions": 20,
+  "generation_backend": "Transformers generate",
   "generation_ready": true,
   "heldout_questions": 20,
   "hf_hidden_state_index": 20,
+  "layer_selection_grid_one_indexed": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28
+  ],
   "official_commit": "b8e0f044fe2410a6fad579f38324f03f13b4e917",
   "official_repository": "https://github.com/safety-research/persona_vectors",
   "paired_rows_total": 2000,
@@ -18,10 +36,19 @@
   "primary_vector": "response_avg_diff",
   "rows_per_polarity": 1000,
   "schema_version": 1,
+  "scientific_pipeline_equivalent": true,
   "shared_instruction_pairs": 5,
   "stage": "S0",
   "status": "pass",
   "steering_block_zero_indexed": 19,
+  "steering_coefficients": [
+    0.5,
+    1.0,
+    1.5,
+    2.0,
+    2.5
+  ],
   "trait": "sycophantic",
-  "transformer_lens_target_hook": "blocks.20.hook_resid_pre"
+  "transformer_lens_target_hook": "blocks.20.hook_resid_pre",
+  "upstream_generation_backend": "vLLM generate"
 }
