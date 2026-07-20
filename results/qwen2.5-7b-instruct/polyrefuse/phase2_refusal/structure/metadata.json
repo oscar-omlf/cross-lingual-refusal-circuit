@@ -1,0 +1,32 @@
+{
+  "definitions": {
+    "chance_adjusted_overlap": "(observed intersection - ab/N) / (min(a,b) - ab/N)",
+    "cross_size_test": "coverage for every k_left by every k_right; directly tests subset-of-larger-core hypothesis",
+    "left_covered_by_right": "|C_left intersect C_right| / |C_left|"
+  },
+  "eligible_edge_universe": 260956,
+  "gqa_group_size": 7,
+  "languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "metric": "h[15,-2] dot unit English refusal direction",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "requested_k": [
+    100,
+    250,
+    500,
+    1000,
+    1500,
+    2000,
+    3000,
+    4000,
+    5000,
+    7500,
+    10000,
+    15000,
+    20000
+  ]
+}

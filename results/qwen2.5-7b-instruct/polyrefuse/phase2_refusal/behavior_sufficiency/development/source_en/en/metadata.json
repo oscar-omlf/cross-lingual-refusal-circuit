@@ -1,0 +1,25 @@
+{
+  "circuit_conditions": [
+    "circuit_only"
+  ],
+  "circuit_label": "source_en",
+  "circuits_dir": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_english_vector/circuits_phase2_nested",
+  "config": "configs/phase2_qwen_refusal.json",
+  "control_conditions": [],
+  "controls_generated": false,
+  "data_path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/data/processed/qwen2.5-7b-instruct/polyrefuse_phase2_refusal/en/development.jsonl",
+  "generated_text_saved": false,
+  "generation_batch_size": 2,
+  "judge_model": "allenai/wildguard",
+  "language": "en",
+  "max_new_tokens": 32,
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "n_prompts": 32,
+  "prompt_text_saved": false,
+  "raw_judge_output_saved": false,
+  "requested_k": [
+    3000
+  ],
+  "row_label": "harmful",
+  "split": "development"
+}

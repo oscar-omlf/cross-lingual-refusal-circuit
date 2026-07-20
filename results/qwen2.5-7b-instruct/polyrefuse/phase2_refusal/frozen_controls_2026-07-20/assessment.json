@@ -1,0 +1,64 @@
+{
+  "behavioral_sufficiency": {
+    "de": {
+      "ci_high": 1.0,
+      "ci_low": 0.8214285714285714,
+      "passes_point_threshold_0.9": true,
+      "point": 0.9285714285714286
+    },
+    "en": {
+      "ci_high": 1.0,
+      "ci_low": 0.9,
+      "passes_point_threshold_0.9": true,
+      "point": 0.967741935483871
+    },
+    "th": {
+      "ci_high": 0.96,
+      "ci_low": 0.6551724137931034,
+      "passes_point_threshold_0.9": false,
+      "point": 0.8148148148148148
+    },
+    "zh": {
+      "ci_high": 1.0,
+      "ci_low": 1.0,
+      "passes_point_threshold_0.9": true,
+      "point": 1.0
+    }
+  },
+  "harmless_refusal_difference": {
+    "de": {
+      "ci_high": 0.15625,
+      "ci_low": 0.0,
+      "passes_point_threshold_0.05": false,
+      "point": 0.0625
+    },
+    "en": {
+      "ci_high": 0.0,
+      "ci_low": 0.0,
+      "passes_point_threshold_0.05": true,
+      "point": 0.0
+    },
+    "th": {
+      "ci_high": 0.0,
+      "ci_low": -0.09375,
+      "passes_point_threshold_0.05": true,
+      "point": -0.03125
+    },
+    "zh": {
+      "ci_high": 0.0,
+      "ci_low": 0.0,
+      "passes_point_threshold_0.05": true,
+      "point": 0.0
+    }
+  },
+  "remaining_publication_gates": [
+    "adaptive Thai circuit-only test at larger k",
+    "harmless reserve and semantic-utility check",
+    "64-token multilingual judge/truncation robustness audit",
+    "fresh held-out confirmation at the finally selected k"
+  ],
+  "schema_version": 1,
+  "selected_k_status": "k3000 remains provisional",
+  "status": "development_controls_complete",
+  "terminal_cut_diagnostic": "Terminal-only ablation is an expected cut-set intervention and is not an upstream-specificity test. Terminal-only circuit-only execution is only partially projection-faithful; use the later fixed-terminal/random-upstream controls to test upstream specificity."
+}

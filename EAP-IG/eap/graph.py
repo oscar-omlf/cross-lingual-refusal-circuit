@@ -1,4 +1,4 @@
-from typing import List, Dict, Union, Tuple, Literal, Optional, Set
+from typing import Any, List, Dict, Union, Tuple, Literal, Optional, Set
 from collections import defaultdict
 from pathlib import Path 
 import json
@@ -7,7 +7,6 @@ import heapq
 import torch
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 import numpy as np
-import pygraphviz as pgv
 
 from .visualization import EDGE_TYPE_COLORS, generate_random_color
 
@@ -348,11 +347,24 @@ class Graph:
         maximum_penwidth: float = 5.0,
         layout: str="dot",
         seed: Optional[int] = None
-    ) -> pgv.AGraph:
+    ) -> Any:
         """
         Colorscheme: a cmap colorscheme
         """
-        g = pgv.AGraph(directed=True, bgcolor="white", overlap="false", splines="true", layout=layout)
+        try:
+            import pygraphviz
+        except ImportError as exc:
+            raise RuntimeError(
+                "Graph rendering requires the optional pygraphviz dependency; "
+                "core circuit discovery and intervention do not."
+            ) from exc
+        g = pygraphviz.AGraph(
+            directed=True,
+            bgcolor="white",
+            overlap="false",
+            splines="true",
+            layout=layout,
+        )
 
         if seed is not None:
             np.random.seed(seed)
