@@ -1,0 +1,27 @@
+{
+  "artifact_sha256": {
+    "coherence_source": "ffad02e61e18a5551f46c05879f975b64dc197e9bc0d82d53891e82b93c75c33",
+    "eval": "442a623cb55aa24bda2ba38962a276136771f0637f8f32bd690a144240bba39c",
+    "extract": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7"
+  },
+  "canonical_judge_blocker": "OPENAI_API_KEY is not set",
+  "canonical_judge_ready": false,
+  "extract_eval_question_overlap": 0,
+  "extract_questions": 20,
+  "generation_ready": true,
+  "heldout_questions": 20,
+  "hf_hidden_state_index": 20,
+  "official_commit": "b8e0f044fe2410a6fad579f38324f03f13b4e917",
+  "official_repository": "https://github.com/safety-research/persona_vectors",
+  "paired_rows_total": 2000,
+  "paper_layer_one_indexed": 20,
+  "primary_vector": "response_avg_diff",
+  "rows_per_polarity": 1000,
+  "schema_version": 1,
+  "shared_instruction_pairs": 5,
+  "stage": "S0",
+  "status": "pass",
+  "steering_block_zero_indexed": 19,
+  "trait": "sycophantic",
+  "transformer_lens_target_hook": "blocks.20.hook_resid_pre"
+}
