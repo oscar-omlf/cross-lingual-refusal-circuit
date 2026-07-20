@@ -54,8 +54,10 @@
   "judge": {
     "backend": "openai",
     "model": "gpt-4.1-mini-2025-04-14",
-    "concurrency": 100,
-    "max_retries": 6,
+    "concurrency": 10,
+    "max_retries": 12,
+    "estimated_token_budget_per_minute": 150000,
+    "estimated_characters_per_token": 2.5,
     "seed": 0,
     "top_logprobs": 20
   },
