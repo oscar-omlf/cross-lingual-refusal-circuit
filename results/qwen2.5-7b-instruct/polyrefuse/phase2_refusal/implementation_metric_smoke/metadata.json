@@ -1,0 +1,17 @@
+{
+  "baseline_computed_once": true,
+  "circuit_label": "source_en",
+  "circuits_dir": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_english_vector/circuits_phase2_nested",
+  "config": "configs/phase2_qwen_refusal.json",
+  "data_path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/data/processed/qwen2.5-7b-instruct/polyrefuse/en/test.jsonl",
+  "generated_text_saved": false,
+  "language": "en",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "n_prompts": 2,
+  "prompt_text_saved": false,
+  "requested_k": [
+    3000
+  ],
+  "row_label": "harmful",
+  "split": "implementation_metric_smoke"
+}

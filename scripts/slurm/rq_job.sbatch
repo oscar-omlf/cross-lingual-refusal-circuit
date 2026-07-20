@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=rq-job
-#SBATCH --account=gpuuva083
+#SBATCH --account=gisr129887
 #SBATCH --partition=gpu_a100
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
@@ -24,10 +24,9 @@ set -euo pipefail
 module purge
 module load 2025
 module load CUDA/12.8.0
-module load Miniforge3/25.3.0-3
 
 repo_root="${SLURM_SUBMIT_DIR}"
-env_prefix="${CONDA_ENV_PREFIX:-${repo_root}/.conda/rq1-refusal-circuit}"
+venv="${RQ_VENV:-${repo_root}/.venv}"
 command_name="${RQ_COMMAND:?Set RQ_COMMAND, e.g. rq2.run-eapig}"
 command_args="${RQ_ARGS:-}"
 
@@ -35,6 +34,10 @@ cd "${repo_root}"
 mkdir -p logs/rq
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
+if [[ ! -x "${venv}/bin/python" ]]; then
+  echo "Missing UV environment at ${venv}; run 'uv sync --locked' before submission." >&2
+  exit 1
+fi
+
 # shellcheck disable=SC2086
-conda run --no-capture-output --prefix "${env_prefix}" \
-  python scripts/rq.py "${command_name}" ${command_args}
+"${venv}/bin/python" scripts/rq.py "${command_name}" ${command_args}

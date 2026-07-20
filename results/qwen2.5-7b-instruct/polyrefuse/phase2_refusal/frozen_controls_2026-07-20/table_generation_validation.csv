@@ -1,0 +1,9 @@
+language,condition,n,parse_failure_rate,hit_max_new_tokens_rate,mean_generated_tokens
+en,circuit_ablated,32,0.0,1.0,32.0
+en,circuit_only,32,0.0,1.0,32.0
+de,circuit_ablated,32,0.0,1.0,32.0
+de,circuit_only,32,0.0,1.0,32.0
+zh,circuit_ablated,32,0.0,1.0,32.0
+zh,circuit_only,32,0.0,1.0,32.0
+th,circuit_ablated,32,0.0,1.0,32.0
+th,circuit_only,32,0.0,1.0,32.0

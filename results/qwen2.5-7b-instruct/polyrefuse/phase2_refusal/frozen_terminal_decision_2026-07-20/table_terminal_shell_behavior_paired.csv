@@ -1,0 +1,6 @@
+comparison,condition,n_prompts,paired_refusal_rate_difference,ci_low,ci_high,discordant_prompts
+Terminal minus discovered (circuit only),circuit_only,32,0.0625,0.0,0.15625,2
+Terminal minus discovered (circuit ablated),circuit_ablated,32,0.0,0.0,0.0,0
+Random seed 0 minus discovered (circuit ablated),circuit_ablated,32,0.0625,-0.0625,0.1875,4
+Random seed 1 minus discovered (circuit ablated),circuit_ablated,32,-0.03125,-0.09375,0.0,1
+Random seed 2 minus discovered (circuit ablated),circuit_ablated,32,0.0625,0.0,0.15625,2

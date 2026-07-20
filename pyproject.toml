@@ -6,7 +6,36 @@ build-backend = "setuptools.build_meta"
 name = "refusal-circuit-rq1"
 version = "0.1.0"
 description = "RQ1 refusal-direction circuit experiments built on EAP-IG"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "accelerate==1.2.1",
+    "datasets==3.2.0",
+    "eap",
+    "einops==0.8.0",
+    "fsspec==2024.9.0",
+    "jaxtyping==0.2.36",
+    "matplotlib==3.10.0",
+    "numpy==1.26.4",
+    "pandas==2.2.3",
+    "pyarrow==18.1.0",
+    "safetensors==0.5.2",
+    "sentencepiece==0.2.0",
+    "sympy==1.13.1",
+    "torch==2.5.1",
+    "tqdm==4.67.1",
+    "transformer-lens==2.15.4",
+    "transformers==4.48.3",
+    "typeguard==4.4.2",
+]
+
+[tool.uv.sources]
+eap = { path = "EAP-IG", editable = true }
+torch = { index = "pytorch-cu121" }
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
 
 [tool.setuptools]
 package-dir = {"" = "src"}

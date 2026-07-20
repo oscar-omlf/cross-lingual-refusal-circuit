@@ -32,6 +32,15 @@ def parse_args():
     parser.add_argument("--circuits-subdir", default="circuits_greedy_no_parent_prune_small_to_large")
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument(
+        "--summary-output-root",
+        type=Path,
+        default=None,
+        help=(
+            "Optional directory for the intersection summary and metadata. "
+            "Circuit JSONs still use --output-root."
+        ),
+    )
+    parser.add_argument(
         "--include-pairs",
         action="store_true",
         help="Also write every pairwise intersection. The all-language intersection is always written.",
@@ -231,10 +240,13 @@ def main():
                 }
             )
 
-    output_root.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_csv(output_root / f"{args.method}_intersection_summary.csv", index=False)
+    summary_output_root = args.summary_output_root or output_root
+    summary_output_root.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(
+        summary_output_root / f"{args.method}_intersection_summary.csv", index=False
+    )
     write_json(
-        output_root / f"{args.method}_intersection_metadata.json",
+        summary_output_root / f"{args.method}_intersection_metadata.json",
         {
             "model": args.model,
             "dataset": "PolyRefuse",
