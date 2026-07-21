@@ -1,0 +1,204 @@
+{
+  "all_coefficients_recover_paper_layer": true,
+  "candidate_layers_one_indexed": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28
+  ],
+  "coefficients": [
+    0.5,
+    1.0,
+    1.5,
+    2.0,
+    2.5
+  ],
+  "coefficients_recovering_paper_layer": [
+    0.5,
+    1.0,
+    1.5,
+    2.0,
+    2.5
+  ],
+  "inputs": [
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_04/scored/coef_pos0p5.jsonl",
+      "sha256": "337d31699b59c12d5dd4bfd292c4404c530cf441cbfbea5502c48f21cd630653"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_04/scored/coef_pos1.jsonl",
+      "sha256": "b5587c636bc9396ef32a38a9e3cc667031bd230eaa291a27d5e0cfc49dbd37cc"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_04/scored/coef_pos1p5.jsonl",
+      "sha256": "7b733a0b8f51d10208ee3025f83b420b678fd5e09d818f5effa2c1f362924f86"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_04/scored/coef_pos2.jsonl",
+      "sha256": "f21441a030001db16f1146bd3f09fb53590e2f5e1ac517cd28c9331d69abfd69"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_04/scored/coef_pos2p5.jsonl",
+      "sha256": "cb1b4c45cc3b838d7e8592da3683ad9a4bd8fbdd50c6e88feb9b2a56303aba91"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_08/scored/coef_pos0p5.jsonl",
+      "sha256": "1d1fdcbae48eec9f4121b0cc949578981e4cfcd459692cb9e0203508e6bb8b8f"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_08/scored/coef_pos1.jsonl",
+      "sha256": "1718464f05d2642c41f92a9281a8b6d190aa7ae4fe498d0d5a2dbdc72fa6918b"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_08/scored/coef_pos1p5.jsonl",
+      "sha256": "0c07c5a74c41186d8c86db45be4992f8198a1f5653df1060d80a084a9c09a3a6"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_08/scored/coef_pos2.jsonl",
+      "sha256": "b0d73cc1b82effacc01159b1a29d01ef988195323667a8904f6a5c20c9636f72"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_08/scored/coef_pos2p5.jsonl",
+      "sha256": "f3cbf77702b703d582222eaf7f4b42e1e3505673e39a12a06f6f4e2b8f8d1f8a"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_12/scored/coef_pos0p5.jsonl",
+      "sha256": "326835f247d42924a29cbd088bc25f121826bb3cf935c2811b416dfa93b29de2"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_12/scored/coef_pos1.jsonl",
+      "sha256": "121836734bdaa0939ec1bfced9a5a03428211af0725e1baa10842587e54988dc"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_12/scored/coef_pos1p5.jsonl",
+      "sha256": "36780cc143a76c5fbe04927ab50b3ebf8def66f41aafd0eae3b701f3d30a9c1c"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_12/scored/coef_pos2.jsonl",
+      "sha256": "132378c39711b47f0abee866b9a6ac322c4ee4503a71f5e43e7375755e8c6b4a"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_12/scored/coef_pos2p5.jsonl",
+      "sha256": "457bcb4c2b0065f59a166959d2a7e873d090364f08a00c16cf023b5e45b6b676"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_16/scored/coef_pos0p5.jsonl",
+      "sha256": "fcd75072c37946c78f80fc41f0bc7a038730773c19f8e94b9fd43fddaf57260a"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_16/scored/coef_pos1.jsonl",
+      "sha256": "c7aaf7648089e38a0a11769d5da27a432178136ea2e004d5fa72c0a1dda351f1"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_16/scored/coef_pos1p5.jsonl",
+      "sha256": "7d1881971f62a83e1d7146a4d746fb1ff9ea73067a2adae287533c8233c13f0c"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_16/scored/coef_pos2.jsonl",
+      "sha256": "f2b341f38c698682e1a6b4875d5ccd7e86de0727942af88f7bfd661a87a021d2"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_16/scored/coef_pos2p5.jsonl",
+      "sha256": "61004eaef72aad369d00f2a8314fda2aff21d88c0b9fb49ccfa8d74409619991"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_20/scored/coef_pos0p5.jsonl",
+      "sha256": "a8127c0b9f61274b1913a336ab0907fbabc97396a9645f153fb3915df12f991f"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_20/scored/coef_pos1.jsonl",
+      "sha256": "cc079f4e7261c2034a6d74e230f98875caa15b4cf0553cf1efba6a7ebdf7ebe1"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_20/scored/coef_pos1p5.jsonl",
+      "sha256": "a95258105da18e91daeefe28bb6e19d88b9024d54b8b3e3646600402652d1e98"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_20/scored/coef_pos2.jsonl",
+      "sha256": "9684d4524156dc529b155ea2e2707af1be84d8b698797a3678d74f18e1e8a474"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_20/scored/coef_pos2p5.jsonl",
+      "sha256": "43b70693b3e5af859c048d5b6b688ca0fc604145ca69afac6eaff2e7999d4128"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_24/scored/coef_pos0p5.jsonl",
+      "sha256": "bf1b2500d54c3b03164e708703a6bdd4e13dbd9329581a493daba633b8100c9a"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_24/scored/coef_pos1.jsonl",
+      "sha256": "e9ad919b099b4ab5f46ba32f47405a820de145b36de8ca1559f98798393547e6"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_24/scored/coef_pos1p5.jsonl",
+      "sha256": "c0a31a71c8843f7ef551fed6d506d56170b4853829bd7283d3ead0f9cad8a765"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_24/scored/coef_pos2.jsonl",
+      "sha256": "4465fe3204a8c7f51f5ab89a192013585d7a43693071eaf5e05ef96e2036f1d6"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_24/scored/coef_pos2p5.jsonl",
+      "sha256": "4bb5cf195c9a1c7c76c5856ecf903f1241a51b3d0109bc79c7ab2aea97e5d1e3"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_28/scored/coef_pos0p5.jsonl",
+      "sha256": "18e757aad657494db0423dbf173aa1619984d30ffef18504aa55bdce4d097b04"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_28/scored/coef_pos1.jsonl",
+      "sha256": "c53ad731c0f96859ce427dd3c537db5ad945237824d3bf3005765dc4ec49348c"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_28/scored/coef_pos1p5.jsonl",
+      "sha256": "ba5e06b35ba13ffd36bd1ced4c55b91188faeb5256ea50ade4c8184cc504d2a5"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_28/scored/coef_pos2.jsonl",
+      "sha256": "e3819f1ce5a6574c73d931089466ccbca7a555df8b208826e84d47407962591d"
+    },
+    {
+      "path": "data/intermediate/persona/qwen2.5-7b-instruct/sycophantic/steering/layer_28/scored/coef_pos2p5.jsonl",
+      "sha256": "a6dbb37962d731179f5bf2329f598e70a06734ff1ad5d6bf282b909169fd57a3"
+    }
+  ],
+  "method": "highest held-out mean trait-expression score at each fixed response-steering coefficient",
+  "paper_selected_layer_one_indexed": 20,
+  "schema_version": 1,
+  "status": "complete",
+  "winner_per_coefficient": [
+    {
+      "coefficient": 0.5,
+      "mean_coherence_score": 99.46412268356964,
+      "mean_trait_score": 8.977199954591226,
+      "selected_layer_one_indexed": 20
+    },
+    {
+      "coefficient": 1.0,
+      "mean_coherence_score": 99.23224394345478,
+      "mean_trait_score": 20.151274943103537,
+      "selected_layer_one_indexed": 20
+    },
+    {
+      "coefficient": 1.5,
+      "mean_coherence_score": 96.78465934143058,
+      "mean_trait_score": 63.23575428866918,
+      "selected_layer_one_indexed": 20
+    },
+    {
+      "coefficient": 2.0,
+      "mean_coherence_score": 85.86177225902044,
+      "mean_trait_score": 91.56069221726597,
+      "selected_layer_one_indexed": 20
+    },
+    {
+      "coefficient": 2.5,
+      "mean_coherence_score": 39.99485749607386,
+      "mean_trait_score": 98.44371508980554,
+      "selected_layer_one_indexed": 20
+    }
+  ]
+}

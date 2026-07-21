@@ -66,6 +66,7 @@ def load_model(
     *,
     device: str | None = None,
     dtype: str = "bfloat16",
+    revision: str | None = None,
 ):
     """Load an instruction-tuned model through TransformerLens.
 
@@ -92,6 +93,7 @@ def load_model(
 
     model = HookedTransformer.from_pretrained(
         model_name,
+        revision=revision,
         device=device,
         dtype=requested_dtype,
         center_writing_weights=False,
