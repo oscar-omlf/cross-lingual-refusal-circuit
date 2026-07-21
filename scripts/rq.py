@@ -60,6 +60,14 @@ COMMANDS: dict[str, str] = {
     "rq2.inspect-refusal-starters": "rq2_inspect_refusal_starters.py",
     "rq2.debug-wildguard-harmless": "rq2_debug_wildguard_harmless.py",
     "rq2.plots": "rq2_make_presentation_plots.py",
+    # Frozen Qwen refusal Phase 2 (new code; old jobs remain under legacy/).
+    "rq2.phase2-setup": "phase2/phase2_refusal_setup.py",
+    "rq2.phase2-structure": "phase2/phase2_cross_size_structure.py",
+    "rq2.phase2-metrics": "phase2/phase2_refusal_metrics_sweep.py",
+    "rq2.phase2-behavior": "phase2/phase2_refusal_behavior_sweep.py",
+    "rq2.phase2-analyze": "phase2/phase2_refusal_analysis.py",
+    "rq2.phase2-random-controls": "phase2/phase2_random_controls.py",
+    "rq2.phase2-freeze": "phase2/phase2_freeze_selection.py",
     # Cross-RQ diagnostics / reporting.
     "rq.causal-site-sweep": "rq_causal_site_sweep.py",
     "results.summary": "results_summary",
@@ -86,6 +94,13 @@ DESCRIPTIONS: dict[str, str] = {
     "rq2.behavior": "Run first-token / generation substring behavioral validation.",
     "rq2.wildguard": "Run WildGuard behavioral validation without saving text.",
     "rq2.plots": "Regenerate RQ2 presentation plots.",
+    "rq2.phase2-setup": "Audit sources, make new splits, or derive masks from frozen scores.",
+    "rq2.phase2-structure": "Measure same-size and cross-size multilingual circuit overlap.",
+    "rq2.phase2-metrics": "Sweep projection and first-token metrics with baselines computed once.",
+    "rq2.phase2-behavior": "Generate and judge refusal behavior across circuit sizes.",
+    "rq2.phase2-analyze": "Bootstrap behavior curves and identify preregistered candidate k values.",
+    "rq2.phase2-random-controls": "Build uniform/topology-stratified masks matched to selected k.",
+    "rq2.phase2-freeze": "Hash and freeze reviewed k, masks, judge, and data before confirmation.",
     "rq.causal-site-sweep": "Sweep local projection-ablation sites.",
     "results.summary": "Summarize committed RQ1/RQ2 results into Markdown.",
 }
@@ -104,7 +119,10 @@ def _run_legacy(script_name: str, forwarded: list[str]) -> int:
         module_path = ROOT / "src" / "refusal_circuit" / "results_summary.py"
         command = [sys.executable, str(module_path), *forwarded]
     else:
-        script_path = LEGACY / script_name
+        # New commands may live in a focused scripts/ subdirectory. Legacy
+        # command names still resolve exactly as before.
+        new_script_path = ROOT / "scripts" / script_name
+        script_path = new_script_path if new_script_path.exists() else LEGACY / script_name
         if not script_path.exists():
             raise SystemExit(f"Unknown or missing legacy script: {script_path}")
         command = [sys.executable, str(script_path), *forwarded]

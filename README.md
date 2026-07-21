@@ -11,8 +11,12 @@ which expects the original task CSVs and a CUDA-ready TransformerLens setup.
 For new experiment runs, use the unified entry point:
 
 ```bash
-python scripts/rq.py list
+/home/omiro1/.local/bin/uv sync --locked
+/home/omiro1/.local/bin/uv run --locked python scripts/rq.py list
 ```
+
+UV manages Python 3.10.20 and the CUDA 12.1 PyTorch wheel in `.venv`; GPU jobs
+still load the cluster's CUDA 12.8 module through the generic SLURM wrapper.
 
 The old one-off scripts are still available under
 [`scripts/legacy/`](scripts/legacy/) for exact reproducibility, but new work
@@ -30,3 +34,7 @@ For the current RQ1/RQ2 result inventory and headline tables, see
 
 For a brief narrative of the multilingual RQ2 result, see
 [the RQ2 progress note](docs/RQ2_BRIEF_PROGRESS.md).
+
+The executable Qwen refusal consolidation configuration is
+`configs/phase2_qwen_refusal.json`. Phase 2 reuses saved Qwen score tables and
+does not rerun refusal-vector extraction or EAP-IG discovery.

@@ -1,0 +1,2 @@
+model,language,split,row_label,circuit_label,requested_k,retained_edges,edge_fraction,n_prompts,faithfulness,necessity,m_normal,m_direction_ablated,m_circuit_only,m_circuit_ablated
+Qwen/Qwen2.5-7B-Instruct,de,development,harmful,upstream_only,3000,2666,0.010216281672006009,32,0.019048091024160385,0.6337475180625916,14.812943458557129,-0.005691980943083763,0.2765747308731079,5.421669960021973

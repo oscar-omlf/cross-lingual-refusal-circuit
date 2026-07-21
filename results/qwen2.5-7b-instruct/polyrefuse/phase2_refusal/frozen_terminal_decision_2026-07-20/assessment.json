@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "status": "corrected_qwen_refusal_results_freeze",
+  "terminal_cut_interpretation": "Terminal-only ablation cuts every selected circuit path before the metric, so its similarity to full-circuit ablation is expected and is not an upstream-specificity test.",
+  "positive_result": "The discovered upstream edge set specifically reconstructs the refusal-vector projection: faithfulness 0.999 versus 0.513 mean for fixed-terminal/random-upstream controls.",
+  "conditional_upstream_recovery": 0.9986363539042586,
+  "behavioral_result": "Discovered circuit-only refusal is 0.938 and circuit ablation strongly reverses refusal. Terminal-only behavior is saturated despite partial vector faithfulness (1.000 refusal), so binary refusal is not an upstream-specificity metric on these prompts.",
+  "claim_supported": "Qwen2.5-7B-Instruct contains an edge-sparse, causally validated, multilingual subgraph that reconstructs a shared refusal-vector representation; its discovered upstream organization outperforms topology-matched random alternatives, and circuit interventions strongly affect generated refusal.",
+  "claim_boundaries": [
+    "edge-sparse, not node-sparse",
+    "minimal only within the tested nested ranked family",
+    "set-level necessity does not establish individual-edge necessity",
+    "the layer-15 scalar is behaviorally relevant but not the sole behavioral bottleneck",
+    "development results require judge/horizon audit and locked confirmation"
+  ],
+  "canonical_document": "docs/QWEN_REFUSAL_RESULTS_FREEZE.md",
+  "gpu_cost": {
+    "elapsed_a100_hours": 3.7919444444444443,
+    "estimated_sbu": 485.3688888888889
+  }
+}

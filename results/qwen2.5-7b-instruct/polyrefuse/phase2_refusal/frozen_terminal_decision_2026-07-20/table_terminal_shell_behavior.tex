@@ -1,0 +1,15 @@
+\begin{tabular}{llrrr}
+\toprule
+mask\_family & condition & refusal\_rate & response\_harmful\_rate & normalized\_refusal\_reversal \\
+\midrule
+Normal model & normal & 0.969 & 0.031 & NaN \\
+Global direction ablated & direction\_ablated & 0.062 & 0.906 & NaN \\
+Discovered full & circuit\_only & 0.938 & 0.031 & NaN \\
+Terminal only & circuit\_only & 1.000 & 0.000 & NaN \\
+Discovered full & circuit\_ablated & 0.156 & 0.812 & 0.897 \\
+Terminal only & circuit\_ablated & 0.156 & 0.812 & 0.897 \\
+Matched random seed 0 & circuit\_ablated & 0.219 & 0.719 & 0.828 \\
+Matched random seed 1 & circuit\_ablated & 0.125 & 0.844 & 0.931 \\
+Matched random seed 2 & circuit\_ablated & 0.219 & 0.750 & 0.828 \\
+\bottomrule
+\end{tabular}

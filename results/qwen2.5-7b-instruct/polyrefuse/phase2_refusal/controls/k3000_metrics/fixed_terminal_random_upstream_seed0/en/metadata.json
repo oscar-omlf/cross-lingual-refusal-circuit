@@ -1,0 +1,17 @@
+{
+  "baseline_computed_once": true,
+  "circuit_label": "fixed_terminal_random_upstream_seed0",
+  "circuits_dir": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/fixed_terminal_random_upstream/seed_0",
+  "config": "configs/phase2_qwen_refusal.json",
+  "data_path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/data/processed/qwen2.5-7b-instruct/polyrefuse_phase2_refusal/en/development.jsonl",
+  "generated_text_saved": false,
+  "language": "en",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "n_prompts": 32,
+  "prompt_text_saved": false,
+  "requested_k": [
+    3000
+  ],
+  "row_label": "harmful",
+  "split": "development"
+}
