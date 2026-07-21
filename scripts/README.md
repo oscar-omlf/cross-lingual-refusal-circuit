@@ -3,10 +3,11 @@
 Use the unified entry point for new work:
 
 ```bash
-python scripts/rq.py list
-python scripts/rq.py rq2.prepare-polyrefuse --languages en de zh th
-python scripts/rq.py rq2.extract-direction --language en
-python scripts/rq.py rq2.run-eapig --help
+UV=/home/omiro1/.local/bin/uv
+"$UV" run --locked python scripts/rq.py list
+"$UV" run --locked python scripts/rq.py rq2.prepare-polyrefuse --languages en de zh th
+"$UV" run --locked python scripts/rq.py rq2.extract-direction --language en
+"$UV" run --locked python scripts/rq.py rq2.run-eapig --help
 ```
 
 For SLURM jobs, prefer the generic launcher:
@@ -31,3 +32,11 @@ Useful command groups:
 - `rq2.*`: Qwen multilingual refusal-direction/circuit experiments.
 - `rq.*`: cross-RQ diagnostics.
 - `results.summary`: regenerate the concise results summary in `docs/`.
+
+The Qwen refusal consolidation uses `rq2.phase2-*` commands. Start with the
+read-only preflight:
+
+```bash
+"$UV" run --locked python scripts/rq.py rq2.phase2-setup \
+  --config configs/phase2_qwen_refusal.json audit
+```

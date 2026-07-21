@@ -1,0 +1,5 @@
+language,language_name,n_prompts,normal_refusal_rate,circuit_ablated_refusal_rate,paired_refusal_difference,paired_refusal_difference_ci_low,paired_refusal_difference_ci_high,normal_response_harmful_rate,circuit_ablated_response_harmful_rate,first_token_top1_change_rate,kl_normal_to_circuit_ablated_mean,kl_normal_to_circuit_ablated_median,parse_failure_rate
+en,English,32,0.03125,0.03125,0.0,0.0,0.0,0.0,0.0,0.1875,0.35412781122799064,0.11603870987892145,0.0
+de,German,32,0.03125,0.09375,0.0625,0.0,0.15625,0.0,0.0,0.125,0.2258306752066801,0.0752424225211143,0.0
+zh,Chinese,32,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.1875,0.3977000895648448,0.0813794806599617,0.0
+th,Thai,32,0.03125,0.0,-0.03125,-0.09375,0.0,0.0,0.0,0.09375,0.13049621339860093,0.0724749974906444,0.0

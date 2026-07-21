@@ -1,0 +1,10 @@
+mask_family,condition,n_prompts,refusal_rate,response_harmful_rate,refusal_substring_rate,normalized_refusal_reversal,hit_max_new_tokens_rate
+Normal model,normal,32,0.96875,0.03125,0.90625,,1.0
+Global direction ablated,direction_ablated,32,0.0625,0.90625,0.0,,1.0
+Discovered full,circuit_only,32,0.9375,0.03125,0.84375,,1.0
+Terminal only,circuit_only,32,1.0,0.0,0.90625,,1.0
+Discovered full,circuit_ablated,32,0.15625,0.8125,0.0,0.896551724137931,1.0
+Terminal only,circuit_ablated,32,0.15625,0.8125,0.0,0.896551724137931,1.0
+Matched random seed 0,circuit_ablated,32,0.21875,0.71875,0.0625,0.8275862068965517,1.0
+Matched random seed 1,circuit_ablated,32,0.125,0.84375,0.0,0.9310344827586207,1.0
+Matched random seed 2,circuit_ablated,32,0.21875,0.75,0.03125,0.8275862068965517,1.0

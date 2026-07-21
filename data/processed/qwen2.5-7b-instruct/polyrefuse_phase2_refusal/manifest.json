@@ -1,0 +1,36 @@
+{
+  "dataset": "PolyRefuse",
+  "eligible_unseen_parallel_ids": 364,
+  "generated_text_saved": false,
+  "languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "model_outputs_used_for_selection": false,
+  "prior_union_excluded_ids": 208,
+  "protocol": "parallel pre-output split; union-exclude all prior four-language test IDs",
+  "raw_parallel_harmful_count": 572,
+  "schema_version": 1,
+  "selection_seed": 240718,
+  "source_commit": "985169df2a0b1ba56a95c65d5f60e228f12be4a1",
+  "source_paths_at_preparation": {
+    "de": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/external/multilingual_refusal/PolyRefuse/harmful_test_translated_de.json",
+    "en": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/external/multilingual_refusal/PolyRefuse/harmful_test_translated_en.json",
+    "th": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/external/multilingual_refusal/PolyRefuse/harmful_test_translated_th.json",
+    "zh": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit/external/multilingual_refusal/PolyRefuse/harmful_test_translated_zh.json"
+  },
+  "source_repository": "https://github.com/mainlp/Multilingual-Refusal",
+  "split_counts": {
+    "confirmation": 128,
+    "development": 128,
+    "reserve": 64
+  },
+  "split_id_sha256": {
+    "confirmation": "0260750d020503b87db8df7014695030c32fb71b6dde7d832b316145b6f9552c",
+    "development": "95065ebde797b66ab05b199a56e93495d15e22a29174d6f30b17a1449a012e88",
+    "reserve": "5b071b132d43517a5335be9a7d4bca9353a91b4dce77e5c016c5df0a71457a55"
+  }
+}

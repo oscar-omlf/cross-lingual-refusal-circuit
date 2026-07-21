@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "submitted_at": "2026-07-20",
+  "billing_sbu_per_a100_hour": 128,
+  "scope": "Budget-gated English terminal-shell and random-mask behavioral decision wave",
+  "jobs": [
+    {"job_id": 24763291, "name": "p2c-ftru0-en", "family": "fixed_terminal_random_upstream_metrics"},
+    {"job_id": 24763292, "name": "p2c-ftru1-en", "family": "fixed_terminal_random_upstream_metrics"},
+    {"job_id": 24763293, "name": "p2c-ftru2-en", "family": "fixed_terminal_random_upstream_metrics"},
+    {"job_id": 24763294, "name": "p2c-term-b-en", "family": "terminal_only_behavior"},
+    {"job_id": 24763295, "name": "p2c-r0-b-en", "family": "matched_random_ablation_behavior"},
+    {"job_id": 24763296, "name": "p2c-r1-b-en", "family": "matched_random_ablation_behavior"},
+    {"job_id": 24763297, "name": "p2c-r2-b-en", "family": "matched_random_ablation_behavior"}
+  ],
+  "conditional_work_not_submitted": [
+    "fixed-terminal/random-upstream generation",
+    "non-English controls",
+    "k=4000 or k=5000 circuit-only generation",
+    "confirmation evaluation"
+  ]
+}

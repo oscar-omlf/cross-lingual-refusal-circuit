@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "reviewer": "",
+  "review_date": "",
+  "selected_circuit_label": "consensus",
+  "selected_k": null,
+  "benign_controls_pass": false,
+  "random_controls_pass": false,
+  "judge_refusal_audit_pass_by_language": {
+    "en": false,
+    "de": false,
+    "zh": false,
+    "th": false
+  },
+  "notes": "Copy this file into the Phase 2 result tree and complete it only after reviewing development controls."
+}

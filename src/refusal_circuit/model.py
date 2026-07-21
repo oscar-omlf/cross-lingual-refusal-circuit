@@ -27,7 +27,7 @@ def configure_eap_hooks(model) -> None:
 
     TransformerLens has used both setter methods and writable config flags for
     these options.  Supporting both keeps the project usable across the
-    version range documented in requirements.txt.
+    version pinned in ``uv.lock``.
     """
     settings = {
         "use_split_qkv_input": True,
@@ -43,7 +43,7 @@ def configure_eap_hooks(model) -> None:
         else:
             raise RuntimeError(
                 f"TransformerLens did not expose {attribute}; install a supported "
-                "TransformerLens version from requirements.txt."
+                "TransformerLens version pinned in uv.lock."
             )
 
     # Gemma-2 and Qwen2.5 use grouped-query attention.  EAP's
@@ -78,7 +78,7 @@ def load_model(
     except ImportError as exc:  # Makes a missing environment actionable.
         raise RuntimeError(
             "TransformerLens is unavailable. Create the documented environment "
-            "with `conda env create -f environment.yml`."
+            "with `uv sync --locked`."
         ) from exc
 
     if device is None:

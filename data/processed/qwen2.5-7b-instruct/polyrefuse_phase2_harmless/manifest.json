@@ -1,0 +1,31 @@
+{
+  "dataset": "PolyRefuse",
+  "eligible_unused_indices": 95,
+  "historical_union_excluded_indices": 105,
+  "languages": [
+    "en",
+    "de",
+    "zh",
+    "th"
+  ],
+  "note": "Chinese harmless-val is language-native but is not index-parallel to the other translations; analyses are language-wise.",
+  "purpose": "Phase 2 harmless specificity controls",
+  "schema_version": 1,
+  "selection_seed": 240720,
+  "selection_used_model_outputs": false,
+  "source_paths": {
+    "de": "external/multilingual_refusal/PolyRefuse/harmless_val_translated_de.json",
+    "en": "external/multilingual_refusal/dataset/splits/harmless_val_200_sampled.json",
+    "th": "external/multilingual_refusal/PolyRefuse/harmless_val_translated_th.json",
+    "zh": "external/multilingual_refusal/PolyRefuse/harmless_val_translated_zh.json"
+  },
+  "source_split": "harmless_val",
+  "split_counts": {
+    "development": 32,
+    "reserve": 32
+  },
+  "split_id_sha256": {
+    "development": "448a0eb2c3ff91919d2c17e87f439090dc43fba4eb75ae07bba74fdfe596cf5f",
+    "reserve": "235dd695a36cd0b4ec1385283d6eea795183cbe4253b4dcd9e96db1f44f9a16b"
+  }
+}

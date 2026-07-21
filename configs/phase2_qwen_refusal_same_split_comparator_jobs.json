@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "submitted_at": "2026-07-20",
+  "scope": "Same-development-split k=3000 full-circuit comparator for the terminal/random controls",
+  "jobs": [
+    {"job_id": 24762361, "name": "p2c-full-en"},
+    {"job_id": 24762362, "name": "p2c-full-de"},
+    {"job_id": 24762363, "name": "p2c-full-zh"},
+    {"job_id": 24762364, "name": "p2c-full-th"}
+  ]
+}

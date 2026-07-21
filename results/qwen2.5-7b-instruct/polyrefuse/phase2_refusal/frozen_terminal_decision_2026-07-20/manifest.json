@@ -1,0 +1,52 @@
+{
+  "frozen_at_utc": "2026-07-20T11:57:13.697680+00:00",
+  "gpu_cost": {
+    "elapsed_a100_hours": 3.7919444444444443,
+    "estimated_sbu": 485.3688888888889
+  },
+  "inputs": {
+    "configs/phase2_qwen_refusal_decisive_english_job_accounting.json": "74357eb32d21a309f19efc326ff37ee76f7627c9701e916462190c6bf946a2f8",
+    "results/qwen2.5-7b-instruct/polyrefuse/en/circuit_discovery_english_vector/circuits_phase2_nested/eapig_top_3000.json": "38a263dc32fc61e91c0a0a0db1f0c4429b2b61bb68471b5103c0270df3e3c70c",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/behavior/development/source_en/en/instance_labels_no_text.csv": "1ec7d0f200dace1e7307e1b5b05829b15dbd6a69670911eda20c953d3d8c7749",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/behavior_sufficiency/development/source_en/en/instance_labels_no_text.csv": "8952e0477d49a8ba9d380d7784a2431c353c62a9a9461cdb61d859359306e9a6",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_behavior/random_min_seed0/en/instance_labels_no_text.csv": "b8393ead475f7b1868e3298188a6856ecb59f9c651777b146a08f706e1946914",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_behavior/random_min_seed1/en/instance_labels_no_text.csv": "9cfb4d77189ba0f226cb1dfe892fd12185c12d9eecc93c0622a66713006c6cfb",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_behavior/random_min_seed2/en/instance_labels_no_text.csv": "b4b666b345cd5a6589fdc4c6737250878ade2d9d8a71cbe118f7f7233096c7c9",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_behavior/terminal_only/en/instance_labels_no_text.csv": "83949e8ef383f46d650bbd22c21e1e074093cbc072cbd58f24a7a05c9d35e982",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/fixed_terminal_random_upstream/seed_0/eapig_top_3000.json": "619106c25656020f40b9e28852a5861f78fd9581067238e35d4826cb9954e150",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/fixed_terminal_random_upstream/seed_1/eapig_top_3000.json": "f6f9fb0ab82341c5934d9b8f28ed473efc265176dd7a311a454392c62ddde688",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/fixed_terminal_random_upstream/seed_2/eapig_top_3000.json": "7a90bb136dac19e52f31c88fa62e7ff101cb188941cd4790a16a89f658bf93d1",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/random/stratified_min_overlap/seed_0/eapig_top_3000.json": "f344a4b77001ac73783b33dc9c6ebf1f0f14de131c6013166bd868732d1dc045",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/random/stratified_min_overlap/seed_1/eapig_top_3000.json": "a54fb55aed7b9880ed1632f76a4636e798f3c3aa3c67df7c22658ceb42bf1ee5",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/random/stratified_min_overlap/seed_2/eapig_top_3000.json": "9d628e560dea1931fc6d06bc0a38cd32ddfd907726427322b0ec3722671425c0",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/terminal_only/eapig_top_3000.json": "ee0ab10a92ee62b561a14b6e427ec9187a856173b0be384f0a654b1bc6a59aee",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_masks/upstream_only/eapig_top_3000.json": "66026691ed3388a078c8a8216c21307479495a6ad2935994f4d9362a5150e94a",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/discovered_full/en/aggregate.csv": "724a734d480ab2832e34d9bf62094a60a4553f99be849b5962ad0c28e1e1a492",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/fixed_terminal_random_upstream_seed0/en/aggregate.csv": "152b9a2a968a0d9e90185378d0e6b0be90d0d0720baade7f24cb7bc03d9b9c46",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/fixed_terminal_random_upstream_seed1/en/aggregate.csv": "419ac00a0ce4c056a4556e5e2974e91f9f735756fe63a10726a23eaf42633444",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/fixed_terminal_random_upstream_seed2/en/aggregate.csv": "42ea4789c4dc0cfdcd3fbcb8d74f8b425f36f974be9d8a219aaab0eceba04dd3",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/random_min_seed0/en/aggregate.csv": "58f1a4130d402378eaa21e141117fe1ba7dc7475c42d62149c6f717fb3aaee6a",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/random_min_seed1/en/aggregate.csv": "534980b5d085c5b82e334b6a597deb3c13117d585f6e76f90c5dda7808e63e19",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/random_min_seed2/en/aggregate.csv": "4b465a2a3c1b5383fc56d8816de82a18115ee6bbc3384769585b58ef120d2cc5",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/terminal_only/en/aggregate.csv": "a5994ff50feec05f41d31434c8c7c55066a1b82cda8791edfbe98ccc070501c5",
+    "results/qwen2.5-7b-instruct/polyrefuse/phase2_refusal/controls/k3000_metrics/upstream_only/en/aggregate.csv": "29826cf05787e4682ce27086554bb08a04b48a0b9dce3c923a8d057eae03f480"
+  },
+  "language": "en",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "outputs": {
+    "assessment.json": "59bca09dd9b88d8715c5dc464c065ec6506edd7a5c2ef7814cf274400be3a176",
+    "figure_terminal_shell_decision.pdf": "a8ed3f0dfc860253428719cacfb33fc226d8536b8331a28820d16ec71f485b98",
+    "figure_terminal_shell_decision.png": "5091d6e83829d74a4906c30fc0336c61d59244e9b686ddd6ff23c61423f6d2da",
+    "table_job_costs.csv": "6f8c1eb9f461f15198d8530a1195ffa8ef501fa13bd8db67f5ef6daa412215dc",
+    "table_terminal_shell_behavior.csv": "292421939234421cd82b218c4ec07d0ba0f346d774dc907d9cb38078fc162c84",
+    "table_terminal_shell_behavior.tex": "a3a660968c49fd81d95fa3b61034a4269d8cb225c2892789195822f21c961eb5",
+    "table_terminal_shell_behavior_paired.csv": "9eb52c44eba0b78c0258ddf305a1e9311d08cd5301328eff05f2ed4012ffe28f",
+    "table_terminal_shell_teacher_forcing.csv": "ba84efc2b3da4dd0d89a6ea142f8c9601ede86dbb192075c619ff4bc3d27b3a7",
+    "table_terminal_shell_teacher_forcing.tex": "6a314f694a265675fff87494409ff679562c4bcd374fa4a02fe709199bb2a74e",
+    "table_terminal_shell_teacher_forcing_detail.csv": "8a25ef44f6d033af04bc0bd96cf6cf087f7a60173d5faf4e55b14d2a482e33bf"
+  },
+  "requested_k": 3000,
+  "schema_version": 1,
+  "split": "development",
+  "status": "frozen_corrected_terminal_cut_audit"
+}
