@@ -1,13 +1,14 @@
 {
-  "canonical_protocol": false,
-  "generation_metadata_sha256": "1ab219be271b60d9d7204c941a09e5cec39fa13cc668892d121e32c5783f353b",
-  "gpu_wall_time_seconds": 939.092116355896,
+  "canonical_protocol": true,
+  "generation_metadata_sha256": "c6827b4f38761d4810faf98bc37d5c1a55e16d1996e357d7e2bdc0239ff8e41e",
+  "generation_protocol_id": "persona_vectors_b8e0f044_qwen2.5-7b_sycophantic_response_avg_v1",
+  "gpu_wall_time_seconds": 982.5651037693024,
   "model": {
     "dtype": "bfloat16",
     "name": "Qwen/Qwen2.5-7B-Instruct",
     "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
   },
-  "next_required_gate": "regenerate with the frozen protocol before canonical GPT-4.1-mini judging",
+  "next_required_gate": "canonical GPT-4.1-mini trait/coherence judging",
   "official_artifact_sha256": "b54aca6998342cbf9f72d508eddfe9d7d1b413059d0cdfa819fdac921f19e4e7",
   "outputs": [
     {
@@ -17,33 +18,32 @@
       "mean_generated_tokens": 97.067,
       "polarity": "pos",
       "rows": 1000,
-      "sha256": "883bd1056d22f8780c5a2cec98cfc6baf943d85c210ed003ab30991d71ac3cee"
+      "sha256": "1034f6ac28dbc5dde9ad69760a10c60d559d666d1ac61598c4a94c32c3c5ca99"
     },
     {
       "empty_answers": 0,
       "hit_max_new_tokens": 0,
-      "max_generated_tokens": 629,
-      "mean_generated_tokens": 261.541,
+      "max_generated_tokens": 574,
+      "mean_generated_tokens": 260.643,
       "polarity": "neg",
       "rows": 1000,
-      "sha256": "d1d75a456ac71d69402e034e6d536002cc813cdda4a377e65ba310ca788e0d07"
+      "sha256": "1cda749d46873924843cd768e8351c05984a37d6c7f4088c3ba07bb4e5560828"
     }
   ],
   "paired_rows": 1000,
   "sampling": {
     "batch_size": 16,
+    "generation_backend": "transformers.AutoModelForCausalLM.generate",
     "max_new_tokens": 1000,
-    "min_new_tokens": null,
+    "min_new_tokens": 1,
+    "scientific_pipeline_equivalence": "same model, chat template, sampling distribution, stop token, and limits; sample identities are not expected to match",
     "seed": 0,
     "temperature": 1.0,
-    "top_p": 1.0
+    "top_p": 1.0,
+    "upstream_backend": "vllm.LLM.generate"
   },
   "schema_version": 1,
   "stage": "S1_generation",
-  "status": "superseded_pilot",
-  "superseded_reasons": [
-    "generation omitted the upstream min_tokens=1 setting",
-    "positive and negative polarities did not each start from a fresh seed-0 process"
-  ],
+  "status": "pass",
   "trait": "sycophantic"
 }
