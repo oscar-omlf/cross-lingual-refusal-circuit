@@ -56,6 +56,9 @@ def main() -> None:
     model_cfg = config["model"]
     vector_cfg = config["vector"]
     validation = config["steering_validation"]
+    # Trait-prefixed vector filename, matching persona.extract's output. For the
+    # sycophancy config this resolves to "sycophantic", unchanged from before.
+    trait_slug = config["trait"]["name"]
     official_root = _resolve(config["paths"]["official_root"])
     eval_path = official_root / "eval.json"
     if not eval_path.exists():
@@ -66,7 +69,7 @@ def main() -> None:
         raise ValueError("held-out evaluation question count differs from the frozen config")
 
     vector_root = _resolve(config["paths"]["results_root"]) / "vector"
-    vector_path = _resolve(args.vector) if args.vector else vector_root / "sycophantic_response_avg_diff.pt"
+    vector_path = _resolve(args.vector) if args.vector else vector_root / f"{trait_slug}_response_avg_diff.pt"
     if not vector_path.exists():
         raise FileNotFoundError(f"persona vector is missing: {vector_path}")
     layer = args.layer if args.layer is not None else int(vector_cfg["paper_layer"])
@@ -88,7 +91,7 @@ def main() -> None:
     max_new_tokens = args.max_new_tokens or int(validation["max_new_tokens"])
     seed = int(validation["seed"])
     positions = validation["positions"]
-    canonical_vector_path = vector_root / "sycophantic_response_avg_diff.pt"
+    canonical_vector_path = vector_root / f"{trait_slug}_response_avg_diff.pt"
     if vector_path.resolve() != canonical_vector_path.resolve():
         raise ValueError("canonical layer validation requires the response-average vector stack")
     frozen_layers = [int(value) for value in config["layer_selection"]["candidate_layers_one_indexed"]]
@@ -150,7 +153,7 @@ def main() -> None:
         designed = [
             {
                 "record_id": f"coef-{label}-q{question_index:02d}-r{rollout_index:02d}",
-                "question_id": f"sycophantic_{question_index}",
+                "question_id": f"{trait_slug}_{question_index}",
                 "question_index": question_index,
                 "rollout_index": rollout_index,
                 "question": question,
