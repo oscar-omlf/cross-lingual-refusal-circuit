@@ -34,6 +34,15 @@ cd "${repo_root}"
 mkdir -p logs/rq
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
+# Load local credentials without putting secrets in sbatch --export arguments
+# or committing them; `.env` is Git-ignored and should be mode 600.
+if [[ -f "${repo_root}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${repo_root}/.env"
+  set +a
+fi
+
 if [[ ! -x "${venv}/bin/python" ]]; then
   echo "Missing UV environment at ${venv}; run 'uv sync --locked' before submission." >&2
   exit 1
