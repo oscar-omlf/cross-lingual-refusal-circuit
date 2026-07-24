@@ -84,13 +84,13 @@ metric as a target.
 
 ## Environment and smoke test
 
-Create the GPU environment (the YAML specifies CUDA 12.1; change only the
-PyTorch CUDA package if the cluster requires another compatible runtime):
+Create the locked UV environment. PyTorch is pinned to its CUDA 12.1 wheel;
+the cluster CUDA 12.8 module supplies a compatible driver/toolkit runtime:
 
 ```bash
-conda env create -f environment.yml
-conda activate rq1-refusal-circuit
-python scripts/rq.py rq1.smoke
+UV=/home/omiro1/.local/bin/uv
+"$UV" sync --locked
+"$UV" run --locked python scripts/rq.py rq1.smoke
 ```
 
 The smoke test uses the same `load_model` function and TransformerLens hook
@@ -98,10 +98,10 @@ configuration as every experiment. It intentionally loads
 `google/gemma-2-2b-it`; it does not fall back to GPT-2. Hugging Face access
 must be available and the Gemma licence accepted for the account in use.
 
-The documented local prefix is `.conda/rq1-refusal-circuit`; its installed
-packages import `eap` from the local EAP-IG checkout and `refusal_circuit` from
-this repository. GPU/model-loading commands are submitted through SLURM rather
-than run on the login node.
+The documented project environment is `.venv`; its installed packages import
+`eap` from the local EAP-IG checkout and `refusal_circuit` from this repository.
+GPU/model-loading commands are submitted through SLURM rather than run on the
+login node.
 
 ## Existing EAP-IG code
 

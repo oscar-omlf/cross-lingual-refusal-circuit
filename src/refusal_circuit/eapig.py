@@ -429,6 +429,203 @@ def attribute_steering_response_logprob(
     }
 
 
+def attribute_steering_contrastive_response_logprob(
+    model,
+    graph,
+    transcript_pairs: list[
+        tuple[tuple[str, int], tuple[str, int]]
+    ],
+    *,
+    raw_direction: torch.Tensor,
+    target_hook: str,
+    corrupt_coefficient: float,
+    config: AttributionConfig,
+) -> dict:
+    """Attribute a trait-specific response-likelihood margin.
+
+    Each item contains a positive-trait and negative-trait answer under the
+    *same positive-trait prompt*.  The scalar metric for one item is
+
+        mean_logp(positive_answer) - mean_logp(negative_answer).
+
+    As in :func:`attribute_steering_response_logprob`, clean is coefficient
+    zero and corrupt is a behaviorally validated negative coefficient at the
+    persona-vector site.  Using paired answers prevents the attribution target
+    from collapsing to the likelihood of one response's wording or length.
+    """
+    if not transcript_pairs:
+        raise ValueError("Contrastive attribution requires at least one transcript pair.")
+    path_coefficients = steering_coefficient_path(
+        corrupt_coefficient, config.ig_steps
+    )
+    if graph.nodes["input"].out_hook != target_hook:
+        raise ValueError("Steering graph input hook does not match the intervention hook.")
+
+    device = next(model.parameters()).device
+    scores = torch.zeros(
+        (graph.n_forward, graph.n_backward), device=device, dtype=torch.float32
+    )
+    total_pairs = 0
+    clean_margin_sum = 0.0
+    corrupt_margin_sum = 0.0
+    clean_positive_sum = 0.0
+    clean_negative_sum = 0.0
+    corrupt_positive_sum = 0.0
+    corrupt_negative_sum = 0.0
+    if config.batch_size != 1:
+        raise ValueError(
+            "Contrastive attribution processes each pair sequentially; "
+            "set batch_size=1."
+        )
+    iterator = tqdm(
+        transcript_pairs,
+        total=len(transcript_pairs),
+        desc="Contrastive steering-path EAP-IG",
+    )
+    for positive_transcript, negative_transcript in iterator:
+        total_pairs += 1
+        clean_values_for_pair = []
+        corrupt_values_for_pair = []
+        # Two sequential single-transcript passes are algebraically identical
+        # to differentiating their likelihood difference in one batch. They
+        # avoid doubling EAP's large activation/gradient cache on 40 GB GPUs.
+        for sign, (text, start) in (
+            (1.0, positive_transcript),
+            (-1.0, negative_transcript),
+        ):
+            tokens, attention_mask = tokenize_prompts(
+                model, [text], max_length=config.max_length
+            )
+            batch_size, n_pos = tokens.shape
+            response_mask = _response_mask(
+                tokens, attention_mask, [start]
+            )
+            prediction_mask = response_prediction_mask(response_mask)
+
+            def corrupt_source_transform(
+                source_name: str, activations: torch.Tensor
+            ):
+                if source_name != target_hook:
+                    return activations
+                vector = raw_direction.to(
+                    device=activations.device, dtype=activations.dtype
+                )
+                return activations + (
+                    prediction_mask.to(
+                        device=activations.device, dtype=activations.dtype
+                    ).unsqueeze(-1)
+                    * float(corrupt_coefficient)
+                    * vector
+                )
+
+            fwd_corrupt, fwd_clean, bwd_hooks, _ = _make_eap_hooks(
+                model,
+                graph,
+                batch_size,
+                n_pos,
+                scores,
+                direction=None,
+                include_logit_gradients=True,
+                corrupt_source_transform=corrupt_source_transform,
+            )
+            corrupt_hook = (
+                target_hook,
+                masked_activation_addition_hook(
+                    raw_direction,
+                    coefficient=corrupt_coefficient,
+                    mask=prediction_mask,
+                ),
+            )
+            with torch.no_grad(), model.hooks(
+                fwd_hooks=fwd_corrupt + [corrupt_hook]
+            ):
+                corrupt_logits = _run_forward(
+                    model,
+                    tokens,
+                    attention_mask,
+                    fwd_corrupt + [corrupt_hook],
+                )
+                corrupt_value = response_logprob_values(
+                    corrupt_logits, tokens, response_mask
+                )[0]
+            with torch.no_grad(), model.hooks(fwd_hooks=fwd_clean):
+                clean_logits = _run_forward(
+                    model, tokens, attention_mask, fwd_clean
+                )
+                clean_value = response_logprob_values(
+                    clean_logits, tokens, response_mask
+                )[0]
+            clean_values_for_pair.append(float(clean_value.item()))
+            corrupt_values_for_pair.append(float(corrupt_value.item()))
+
+            for coefficient in path_coefficients:
+                model.zero_grad(set_to_none=True)
+                path_hooks = []
+                if coefficient != 0:
+                    path_hooks.append(
+                        (
+                            target_hook,
+                            masked_activation_addition_hook(
+                                raw_direction,
+                                coefficient=coefficient,
+                                mask=prediction_mask,
+                            ),
+                        )
+                    )
+                with model.hooks(
+                    fwd_hooks=[
+                        (
+                            graph.nodes["input"].out_hook,
+                            _input_requires_grad,
+                        ),
+                        *path_hooks,
+                    ],
+                    bwd_hooks=bwd_hooks,
+                ):
+                    logits = _run_forward(
+                        model, tokens, attention_mask, path_hooks
+                    )
+                    value = response_logprob_values(
+                        logits, tokens, response_mask
+                    )[0]
+                    (sign * value).backward()
+
+        clean_positive, clean_negative = clean_values_for_pair
+        corrupt_positive, corrupt_negative = corrupt_values_for_pair
+        clean_margin_sum += clean_positive - clean_negative
+        corrupt_margin_sum += corrupt_positive - corrupt_negative
+        clean_positive_sum += clean_positive
+        clean_negative_sum += clean_negative
+        corrupt_positive_sum += corrupt_positive
+        corrupt_negative_sum += corrupt_negative
+
+    scores /= total_pairs * config.ig_steps
+    if not torch.isfinite(scores).all():
+        raise RuntimeError("Non-finite contrastive steering-path EAP-IG scores.")
+    for edge in graph.edges.values():
+        edge.score = float(
+            scores[
+                graph.forward_index(edge.parent, attn_slice=False),
+                graph.backward_index(
+                    edge.child, qkv=edge.qkv, attn_slice=False
+                ),
+            ].item()
+        )
+    return {
+        "clean_contrastive_margin": clean_margin_sum / total_pairs,
+        "corrupt_contrastive_margin": corrupt_margin_sum / total_pairs,
+        "clean_minus_corrupt_margin": (
+            clean_margin_sum - corrupt_margin_sum
+        )
+        / total_pairs,
+        "clean_positive_response_logprob": clean_positive_sum / total_pairs,
+        "clean_negative_response_logprob": clean_negative_sum / total_pairs,
+        "corrupt_positive_response_logprob": corrupt_positive_sum / total_pairs,
+        "corrupt_negative_response_logprob": corrupt_negative_sum / total_pairs,
+        "path_coefficients": list(path_coefficients),
+    }
+
+
 def attribute_response_average(
     model,
     graph,

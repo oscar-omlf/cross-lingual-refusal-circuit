@@ -81,7 +81,16 @@ def main() -> None:
     minimum_coherence = float(
         discovery_meta["selection"]["minimum_coherence_score"]
     )
+    metric_name = discovery_meta["metric"]["name"]
+    contrastive = metric_name == "contrastive_response_logprob"
     positive_path = intermediate / "judged/pos_scored.jsonl"
+    negative_path = intermediate / "judged/neg_scored.jsonl"
+    negative_by_pair = {
+        row["pair_id"]: row for row in read_jsonl(negative_path)
+    }
+    maximum_negative_trait = discovery_meta["selection"].get(
+        "maximum_negative_trait_score"
+    )
     effective = set(
         pd.read_csv(result_root / "vector/effective_pairs.csv")["pair_id"].astype(str)
     )
@@ -94,6 +103,18 @@ def main() -> None:
         and float(row["trait_score"]) >= minimum_trait
         and row.get("coherence_score") is not None
         and float(row["coherence_score"]) >= minimum_coherence
+        and (
+            not contrastive
+            or (
+                row["pair_id"] in negative_by_pair
+                and negative_by_pair[row["pair_id"]].get("trait_score") is not None
+                and float(negative_by_pair[row["pair_id"]]["trait_score"])
+                <= float(maximum_negative_trait)
+                and negative_by_pair[row["pair_id"]].get("coherence_score") is not None
+                and float(negative_by_pair[row["pair_id"]]["coherence_score"])
+                >= minimum_coherence
+            )
+        )
     ]
     selected = _balanced(candidates, seed=args.seed)[: args.num_prompts]
     if len(selected) != args.num_prompts:
@@ -131,72 +152,110 @@ def main() -> None:
     }
     instances = []
     for row in selected:
-        text = row["prompt"] + row["answer"]
         response_start = len(
             model.tokenizer.encode(row["prompt"], add_special_tokens=False)
         )
-        tokens, attention_mask = tokenize_prompts(
-            model, [text], max_length=args.max_length
-        )
-        response_mask = _response_mask(tokens, attention_mask, [response_start])
-        prediction_mask = response_prediction_mask(response_mask)
-        corrupt_hook = (
-            target_hook,
-            masked_activation_addition_hook(
-                raw_direction,
-                coefficient=corrupt_coefficient,
-                mask=prediction_mask,
-            ),
-        )
-
-        def cache_transform(source_name: str, activations: torch.Tensor):
-            if source_name != target_hook:
-                return activations
-            return activations + (
-                prediction_mask.to(
-                    device=activations.device, dtype=activations.dtype
-                ).unsqueeze(-1)
-                * corrupt_coefficient
-                * raw_direction.to(
-                    device=activations.device, dtype=activations.dtype
-                )
-            )
-
-        with torch.inference_mode():
-            clean_logits = model(tokens, attention_mask=attention_mask)
-        with torch.inference_mode(), model.hooks(fwd_hooks=[corrupt_hook]):
-            corrupt_logits = model(tokens, attention_mask=attention_mask)
-        logits_by_condition = {
-            "clean": clean_logits,
-            "corrupt": corrupt_logits,
-            "circuit_only": mixed_logits_with_intervention(
-                model,
-                graph,
-                tokens,
-                attention_mask,
-                corrupt_fwd_hooks=[corrupt_hook],
-                corrupt_cache_transform=cache_transform,
-                patch_selected=False,
-            ),
-            "circuit_ablated": mixed_logits_with_intervention(
-                model,
-                graph,
-                tokens,
-                attention_mask,
-                corrupt_fwd_hooks=[corrupt_hook],
-                corrupt_cache_transform=cache_transform,
-                patch_selected=True,
-            ),
-        }
+        answer_specs = [("positive", row["answer"])]
+        if contrastive:
+            negative = negative_by_pair[row["pair_id"]]
+            answer_specs.append(("negative", negative["answer"]))
         record = {
             "record_id": row["record_id"],
             "pair_id": row["pair_id"],
             "trait_score": float(row["trait_score"]),
             "coherence_score": float(row["coherence_score"]),
         }
-        for condition, logits in logits_by_condition.items():
-            value = float(
-                response_logprob_values(logits, tokens, response_mask).item()
+        if contrastive:
+            record.update(
+                {
+                    "negative_record_id": negative["record_id"],
+                    "negative_trait_score": float(negative["trait_score"]),
+                    "negative_coherence_score": float(
+                        negative["coherence_score"]
+                    ),
+                }
+            )
+        component_values = {
+            name: [] for name in values
+        }
+        # Keep the two contrastive transcripts sequential. EAP circuit caches
+        # for a batch of two exceed the 40 GB A100 memory available here.
+        for answer_label, answer in answer_specs:
+            tokens, attention_mask = tokenize_prompts(
+                model,
+                [row["prompt"] + answer],
+                max_length=args.max_length,
+            )
+            response_mask = _response_mask(
+                tokens, attention_mask, [response_start]
+            )
+            prediction_mask = response_prediction_mask(response_mask)
+            corrupt_hook = (
+                target_hook,
+                masked_activation_addition_hook(
+                    raw_direction,
+                    coefficient=corrupt_coefficient,
+                    mask=prediction_mask,
+                ),
+            )
+
+            def cache_transform(source_name: str, activations: torch.Tensor):
+                if source_name != target_hook:
+                    return activations
+                return activations + (
+                    prediction_mask.to(
+                        device=activations.device, dtype=activations.dtype
+                    ).unsqueeze(-1)
+                    * corrupt_coefficient
+                    * raw_direction.to(
+                        device=activations.device, dtype=activations.dtype
+                    )
+                )
+
+            with torch.inference_mode():
+                clean_logits = model(tokens, attention_mask=attention_mask)
+            with torch.inference_mode(), model.hooks(
+                fwd_hooks=[corrupt_hook]
+            ):
+                corrupt_logits = model(
+                    tokens, attention_mask=attention_mask
+                )
+            logits_by_condition = {
+                "clean": clean_logits,
+                "corrupt": corrupt_logits,
+                "circuit_only": mixed_logits_with_intervention(
+                    model,
+                    graph,
+                    tokens,
+                    attention_mask,
+                    corrupt_fwd_hooks=[corrupt_hook],
+                    corrupt_cache_transform=cache_transform,
+                    patch_selected=False,
+                ),
+                "circuit_ablated": mixed_logits_with_intervention(
+                    model,
+                    graph,
+                    tokens,
+                    attention_mask,
+                    corrupt_fwd_hooks=[corrupt_hook],
+                    corrupt_cache_transform=cache_transform,
+                    patch_selected=True,
+                ),
+            }
+            for condition, logits in logits_by_condition.items():
+                value = float(
+                    response_logprob_values(
+                        logits, tokens, response_mask
+                    )[0].item()
+                )
+                component_values[condition].append(value)
+                record[f"{condition}_{answer_label}_logprob"] = value
+
+        for condition, components in component_values.items():
+            value = (
+                components[0] - components[1]
+                if contrastive
+                else components[0]
             )
             values[condition].append(value)
             record[condition] = value
@@ -237,7 +296,7 @@ def main() -> None:
             "clean_coefficient": 0.0,
             "corrupt_coefficient": corrupt_coefficient,
         },
-        "metric": "mean autoregressive log probability of held-out high-trait response tokens",
+        "metric": metric_name,
         "means": {
             name: float(tensor.mean().item()) for name, tensor in tensors.items()
         },

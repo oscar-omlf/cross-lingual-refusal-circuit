@@ -3,7 +3,8 @@
 
 Unlike the earlier response-projection circuit, this graph begins at the
 validated response-time steering site and terminates at model logits.  Its
-metric is the autoregressive log likelihood of judged high-trait responses.
+preferred metric contrasts paired high- and low-trait response likelihoods
+under the same prompt.
 The corrupt endpoint uses a behaviorally validated negative steering
 coefficient; EAP-IG integrates gradients from that endpoint back to clean.
 """
@@ -50,6 +51,12 @@ def main() -> None:
     parser.add_argument("--corrupt-coefficient", type=float, default=-2.0)
     parser.add_argument("--minimum-trait-score", type=float, default=80.0)
     parser.add_argument("--minimum-coherence-score", type=float, default=80.0)
+    parser.add_argument("--maximum-negative-trait-score", type=float, default=20.0)
+    parser.add_argument(
+        "--metric",
+        choices=("response_logprob", "contrastive_response_logprob"),
+        default="response_logprob",
+    )
     parser.add_argument("--k-values", type=int, nargs="+", default=(100, 300, 1000))
     parser.add_argument("--device", default=None)
     parser.add_argument("--dtype", default="bfloat16")
@@ -65,6 +72,7 @@ def main() -> None:
 
     from refusal_circuit.eapig import (
         AttributionConfig,
+        attribute_steering_contrastive_response_logprob,
         attribute_steering_response_logprob,
     )
     from refusal_circuit.graph import (
@@ -94,6 +102,10 @@ def main() -> None:
 
     effective = set(pd.read_csv(vector_root / "effective_pairs.csv")["pair_id"].astype(str))
     positive_path = intermediate / "judged/pos_scored.jsonl"
+    negative_path = intermediate / "judged/neg_scored.jsonl"
+    negative_by_pair = {
+        row["pair_id"]: row for row in read_jsonl(negative_path)
+    }
     candidates = [
         row
         for row in read_jsonl(positive_path)
@@ -102,6 +114,18 @@ def main() -> None:
         and float(row["trait_score"]) >= args.minimum_trait_score
         and row.get("coherence_score") is not None
         and float(row["coherence_score"]) >= args.minimum_coherence_score
+        and (
+            args.metric == "response_logprob"
+            or (
+                row["pair_id"] in negative_by_pair
+                and negative_by_pair[row["pair_id"]].get("trait_score") is not None
+                and float(negative_by_pair[row["pair_id"]]["trait_score"])
+                <= args.maximum_negative_trait_score
+                and negative_by_pair[row["pair_id"]].get("coherence_score") is not None
+                and float(negative_by_pair[row["pair_id"]]["coherence_score"])
+                >= args.minimum_coherence_score
+            )
+        )
     ]
     selected = _balanced_high_trait(candidates, seed=args.seed)[: args.num_prompts]
     if len(selected) != args.num_prompts:
@@ -128,44 +152,92 @@ def main() -> None:
         raise ValueError(f"Frozen layer mapping expected {expected_hook}, found {target_hook}")
 
     transcripts = []
+    transcript_pairs = []
     boundaries = []
     for row in selected:
-        text = row["prompt"] + row["answer"]
         response_start = len(
             model.tokenizer.encode(row["prompt"], add_special_tokens=False)
         )
-        used_length = min(
-            len(model.tokenizer.encode(text, add_special_tokens=False)),
+        positive_text = row["prompt"] + row["answer"]
+        positive_used_length = min(
+            len(model.tokenizer.encode(positive_text, add_special_tokens=False)),
             args.max_length,
         )
-        if response_start >= used_length:
+        if response_start >= positive_used_length:
             raise ValueError(f"Truncation removed response for {row['record_id']}")
-        transcripts.append((text, response_start))
-        boundaries.append(
-            {
-                "record_id": row["record_id"],
-                "pair_id": row["pair_id"],
-                "response_start": response_start,
-                "used_length": used_length,
-                "trait_score": float(row["trait_score"]),
-                "coherence_score": float(row["coherence_score"]),
-            }
-        )
+        boundary = {
+            "record_id": row["record_id"],
+            "pair_id": row["pair_id"],
+            "response_start": response_start,
+            "positive_used_length": positive_used_length,
+            "positive_trait_score": float(row["trait_score"]),
+            "positive_coherence_score": float(row["coherence_score"]),
+        }
+        if args.metric == "contrastive_response_logprob":
+            negative = negative_by_pair[row["pair_id"]]
+            # Deliberately score both answers under the positive prompt. The
+            # negative answer supplies content, not a different conditioning
+            # context, so the metric is a genuine same-prompt preference.
+            negative_text = row["prompt"] + negative["answer"]
+            negative_used_length = min(
+                len(
+                    model.tokenizer.encode(
+                        negative_text, add_special_tokens=False
+                    )
+                ),
+                args.max_length,
+            )
+            if response_start >= negative_used_length:
+                raise ValueError(
+                    f"Truncation removed negative response for {row['pair_id']}"
+                )
+            transcript_pairs.append(
+                (
+                    (positive_text, response_start),
+                    (negative_text, response_start),
+                )
+            )
+            boundary.update(
+                {
+                    "negative_record_id": negative["record_id"],
+                    "negative_used_length": negative_used_length,
+                    "negative_trait_score": float(negative["trait_score"]),
+                    "negative_coherence_score": float(
+                        negative["coherence_score"]
+                    ),
+                }
+            )
+        else:
+            transcripts.append((positive_text, response_start))
+            boundary["used_length"] = positive_used_length
+        boundaries.append(boundary)
 
     graph = make_steering_to_logits_graph(model, layer)
-    metric_diagnostics = attribute_steering_response_logprob(
-        model,
-        graph,
-        transcripts,
-        raw_direction=raw_direction,
-        target_hook=target_hook,
-        corrupt_coefficient=args.corrupt_coefficient,
-        config=AttributionConfig(
-            batch_size=args.batch_size,
-            max_length=args.max_length,
-            ig_steps=args.ig_steps,
-        ),
+    attribution_config = AttributionConfig(
+        batch_size=args.batch_size,
+        max_length=args.max_length,
+        ig_steps=args.ig_steps,
     )
+    if args.metric == "contrastive_response_logprob":
+        metric_diagnostics = attribute_steering_contrastive_response_logprob(
+            model,
+            graph,
+            transcript_pairs,
+            raw_direction=raw_direction,
+            target_hook=target_hook,
+            corrupt_coefficient=args.corrupt_coefficient,
+            config=attribution_config,
+        )
+    else:
+        metric_diagnostics = attribute_steering_response_logprob(
+            model,
+            graph,
+            transcripts,
+            raw_direction=raw_direction,
+            target_hook=target_hook,
+            corrupt_coefficient=args.corrupt_coefficient,
+            config=attribution_config,
+        )
     output.mkdir(parents=True, exist_ok=True)
     write_edge_scores_parquet(graph, score_path)
     write_top_edges_summary(
@@ -194,7 +266,7 @@ def main() -> None:
             "target": {
                 "hook": graph.nodes["logits"].in_hook,
                 "positions": "response_next_token_logits",
-                "metric": "mean_log_probability_of_high_sycophancy_response_tokens",
+                "metric": args.metric,
                 "causal_timing": "each logit precedes its scored response token",
             },
             "source_intervention": {
@@ -227,6 +299,11 @@ def main() -> None:
             "seed": args.seed,
             "minimum_trait_score": args.minimum_trait_score,
             "minimum_coherence_score": args.minimum_coherence_score,
+            "maximum_negative_trait_score": (
+                args.maximum_negative_trait_score
+                if args.metric == "contrastive_response_logprob"
+                else None
+            ),
             "n_prompts": len(selected),
             "record_ids": [row["record_id"] for row in selected],
             "boundaries": boundaries,
@@ -244,9 +321,12 @@ def main() -> None:
             ),
         },
         "metric": {
-            "name": "mean response-token autoregressive log probability",
+            "name": args.metric,
             "behavioral_alignment": (
-                "responses passed the frozen sycophancy and coherence judge thresholds"
+                "paired answers passed frozen sycophancy and coherence thresholds; "
+                "both answers are scored under the same positive-trait prompt"
+                if args.metric == "contrastive_response_logprob"
+                else "responses passed the frozen sycophancy and coherence judge thresholds"
             ),
             **metric_diagnostics,
         },
