@@ -75,7 +75,7 @@ async def main_async(args) -> None:
         )
     config = json.loads(args.config.read_text(encoding="utf-8"))
     judge_cfg = config["judge"]
-    protocol_field = (
+    protocol_field = args.protocol_field or (
         "generation_protocol_id" if args.artifact == "extract" else "steering_protocol_id"
     )
     official_root = _resolve(config["paths"]["official_root"])
@@ -111,6 +111,61 @@ async def main_async(args) -> None:
         else:
             raise FileExistsError(f"{output_path} exists; pass --resume or --overwrite")
 
+    reused_count = 0
+    if args.reuse_output is not None:
+        reuse_path = _resolve(args.reuse_output)
+        reusable_rows = read_jsonl(reuse_path)
+        reusable = {row["record_id"]: row for row in reusable_rows}
+        if len(reusable) != len(reusable_rows):
+            raise ValueError(f"duplicate reusable record IDs in {reuse_path}")
+
+        def semantic_key(row: dict) -> tuple:
+            return (
+                row.get("condition"),
+                row.get("question_id"),
+                row.get("question"),
+                row.get("system_prompt"),
+                row.get("answer"),
+                row.get("decoding"),
+                row.get("model"),
+                row.get("model_revision"),
+            )
+
+        reusable_by_content = {}
+        for old in reusable_rows:
+            key = semantic_key(old)
+            if key in reusable_by_content:
+                raise ValueError(f"ambiguous reusable judged content in {reuse_path}")
+            reusable_by_content[key] = old
+        inputs_by_id = {row["record_id"]: row for row in rows}
+        judge_fields = (
+            "trait_score",
+            "trait_numeric_mass",
+            "coherence_score",
+            "coherence_numeric_mass",
+            "judge_model",
+            "judge_protocol",
+            "trait_judge_request",
+            "coherence_judge_request",
+        )
+        for record_id, current in inputs_by_id.items():
+            if record_id in existing:
+                continue
+            old = reusable.get(record_id) or reusable_by_content.get(semantic_key(current))
+            if old is None:
+                continue
+            if old.get("question") != current.get("question") or old.get("answer") != current.get("answer"):
+                raise ValueError(f"Refusing mismatched reused judge row {record_id}")
+            copied = dict(current)
+            for field in judge_fields:
+                if field in old:
+                    copied[field] = old[field]
+            copied["judge_reused_from"] = str(reuse_path.relative_to(ROOT))
+            copied["judge_reused_record_id"] = old["record_id"]
+            write_jsonl(output_path, [copied], mode="a")
+            existing[record_id] = copied
+            reused_count += 1
+
     client = AsyncOpenAI()
     semaphore = asyncio.Semaphore(args.concurrency or int(judge_cfg["concurrency"]))
     model = args.model or judge_cfg["model"]
@@ -122,7 +177,7 @@ async def main_async(args) -> None:
         characters_per_token=float(judge_cfg["estimated_characters_per_token"]),
     )
 
-    async def score(prompt: str) -> tuple[float | None, float]:
+    async def score(prompt: str) -> tuple[float | None, float, dict]:
         messages = [{"role": "user", "content": prompt}]
         for attempt in range(max_retries):
             try:
@@ -147,7 +202,12 @@ async def main_async(args) -> None:
                         continue
                     if 0 <= value <= 100:
                         numeric_mass += probability
-                return aggregate_numeric_logprobs(probabilities), numeric_mass
+                usage = response.usage.model_dump() if response.usage is not None else None
+                return aggregate_numeric_logprobs(probabilities), numeric_mass, {
+                    "response_id": response.id,
+                    "created": response.created,
+                    "usage": usage,
+                }
             except Exception:
                 if attempt + 1 == max_retries:
                     raise
@@ -155,10 +215,10 @@ async def main_async(args) -> None:
         raise AssertionError("unreachable")
 
     async def judge_row(row: dict) -> dict:
-        trait_score, trait_mass = await score(
+        trait_score, trait_mass, trait_request = await score(
             trait_prompt.format(question=row["question"], answer=row["answer"])
         )
-        coherence_score, coherence_mass = await score(
+        coherence_score, coherence_mass, coherence_request = await score(
             COHERENCE_PROMPT.format(question=row["question"], answer=row["answer"])
         )
         output = dict(row)
@@ -170,6 +230,8 @@ async def main_async(args) -> None:
                 "coherence_numeric_mass": coherence_mass,
                 "judge_model": model,
                 "judge_protocol": "top20_expected_0_100",
+                "trait_judge_request": trait_request,
+                "coherence_judge_request": coherence_request,
             }
         )
         return output
@@ -202,6 +264,8 @@ async def main_async(args) -> None:
         "rubric_artifact": args.artifact,
         "trait_score_failures": sum(row["trait_score"] is None for row in final),
         "coherence_score_failures": sum(row["coherence_score"] is None for row in final),
+        "reused_judged_rows": reused_count,
+        "new_judged_rows": len(final) - reused_count,
     }
     write_json(output_path.with_suffix(".metadata.json"), metadata)
     print(json.dumps(metadata, indent=2))
@@ -214,8 +278,20 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default=None)
     parser.add_argument("--artifact", choices=("extract", "eval"), default="extract")
+    parser.add_argument(
+        "--protocol-field",
+        choices=("generation_protocol_id", "steering_protocol_id", "behavior_protocol_id"),
+        default=None,
+        help="Input/metadata provenance field; behavioral pilots use behavior_protocol_id.",
+    )
     parser.add_argument("--concurrency", type=int, default=None)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--reuse-output",
+        type=Path,
+        default=None,
+        help="Reuse already judged rows only when record ID, question, and answer match exactly.",
+    )
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
     if args.resume and args.overwrite:

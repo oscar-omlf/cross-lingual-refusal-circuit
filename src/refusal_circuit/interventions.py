@@ -75,6 +75,39 @@ def activation_addition_hook(
     return hook
 
 
+def masked_activation_addition_hook(
+    vector: torch.Tensor,
+    *,
+    coefficient: float,
+    mask: torch.Tensor,
+) -> Callable:
+    """Add a raw vector at an explicit batch-by-position mask.
+
+    Cached autoregressive steering writes at the final position of every
+    decoding call.  In a parallel teacher-forced pass, the equivalent causal
+    locations are the positions whose logits predict response tokens.  The
+    caller supplies that mask explicitly to avoid conflating response tokens
+    with their one-position-earlier prediction sites.
+    """
+
+    def hook(activations: torch.Tensor, hook) -> torch.Tensor:
+        if tuple(mask.shape) != tuple(activations.shape[:2]):
+            raise ValueError(
+                f"steering mask {tuple(mask.shape)} does not match activations "
+                f"{tuple(activations.shape[:2])}"
+            )
+        addition = vector.to(device=activations.device, dtype=activations.dtype)
+        if addition.ndim != 1 or addition.numel() != activations.shape[-1]:
+            raise ValueError("steering vector shape does not match activations")
+        return activations + (
+            mask.to(device=activations.device, dtype=activations.dtype).unsqueeze(-1)
+            * float(coefficient)
+            * addition
+        )
+
+    return hook
+
+
 def all_layer_ablation_hooks(model, direction: torch.Tensor, *, strength: float = 1.0):
     """Return the global residual ablation hooks used for RQ1's corrupt run.
 

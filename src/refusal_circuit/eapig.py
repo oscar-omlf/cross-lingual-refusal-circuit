@@ -12,13 +12,13 @@ hooks, and edge score contraction are otherwise the local EAP-IG machinery.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Callable, Iterable
 
 import torch
 from tqdm.auto import tqdm
 
-from .interventions import all_layer_ablation_hooks
-from .metrics import ProjectionCapture, refusal_log_odds
+from .interventions import all_layer_ablation_hooks, masked_activation_addition_hook
+from .metrics import MaskedProjectionCapture, ProjectionCapture, refusal_log_odds
 from .model import tokenize_prompts
 
 
@@ -40,9 +40,10 @@ def _make_eap_hooks(
     batch_size: int,
     n_pos: int,
     scores: torch.Tensor,
-    direction: torch.Tensor,
+    direction: torch.Tensor | None,
     *,
     include_logit_gradients: bool = False,
+    corrupt_source_transform: Callable[[str, torch.Tensor], torch.Tensor] | None = None,
 ):
     """Create upstream EAP cache and gradient hooks with float32 accumulation."""
     from eap.graph import AttentionNode, InputNode, LogitNode
@@ -58,16 +59,31 @@ def _make_eap_hooks(
     bwd: list = []
     attention_nodes: dict[int, object] = {}
 
-    def source_value(activations: torch.Tensor, *, corrupt: bool) -> torch.Tensor:
+    if direction is None and corrupt_source_transform is None:
+        raise ValueError("A direction or corrupt source transform is required.")
+    if direction is not None and corrupt_source_transform is not None:
+        raise ValueError("Specify either direction or corrupt source transform, not both.")
+
+    def source_value(
+        activations: torch.Tensor, *, corrupt: bool, source_name: str
+    ) -> torch.Tensor:
         value = activations.detach().float()
         if corrupt:
-            vector = direction.to(value)
-            vector = vector / vector.norm().clamp_min(1e-8)
-            value = value - torch.einsum("...d,d->...", value, vector).unsqueeze(-1) * vector
+            if corrupt_source_transform is not None:
+                value = corrupt_source_transform(source_name, value)
+            else:
+                vector = direction.to(value)
+                vector = vector / vector.norm().clamp_min(1e-8)
+                value = (
+                    value
+                    - torch.einsum("...d,d->...", value, vector).unsqueeze(-1) * vector
+                )
         return value
 
     def activation_hook(index, sign: float, corrupt: bool, activations: torch.Tensor, hook):
-        activation_difference[:, :, index].add_(sign * source_value(activations, corrupt=corrupt))
+        activation_difference[:, :, index].add_(
+            sign * source_value(activations, corrupt=corrupt, source_name=hook.name)
+        )
         return activations
 
     def attention_cache_hooks(layer: int, index, *, sign: float, corrupt: bool):
@@ -82,7 +98,12 @@ def _make_eap_hooks(
             bias = activations.detach().float() - result.sum(dim=2)
             effective_heads = result + bias.unsqueeze(2) / result.shape[2]
             activation_difference[:, :, index].add_(
-                sign * source_value(effective_heads, corrupt=corrupt)
+                sign
+                * source_value(
+                    effective_heads,
+                    corrupt=corrupt,
+                    source_name=f"blocks.{layer}.attn.hook_result",
+                )
             )
             return activations
 
@@ -195,6 +216,13 @@ def _accumulate_terminal_metric_scores(
     if capture.activation is None or capture.activation.grad is None:
         raise RuntimeError("The RQ1 terminal residual metric did not retain a gradient.")
     gradient = capture.activation.grad.detach().float()
+    if gradient.ndim == 3:
+        if tuple(gradient.shape[:2]) != tuple(activation_difference.shape[:2]):
+            raise ValueError("Masked terminal gradient shape does not match cached activations.")
+        terminal_index = graph.backward_index(graph.nodes["logits"])
+        contribution = torch.einsum("bpfd,bpd->f", activation_difference, gradient)
+        scores[:, terminal_index].add_(contribution)
+        return
     full_gradient = torch.zeros(
         (activation_difference.shape[0], activation_difference.shape[1], gradient.shape[-1]),
         device=gradient.device,
@@ -209,6 +237,277 @@ def _accumulate_terminal_metric_scores(
     terminal_index = graph.backward_index(graph.nodes["logits"])
     contribution = torch.einsum("bpfd,bpd->f", activation_difference, full_gradient)
     scores[:, terminal_index].add_(contribution)
+
+
+def _response_mask(tokens: torch.Tensor, attention_mask: torch.Tensor, response_starts: list[int]) -> torch.Tensor:
+    """Build a mask over unpadded response tokens using unpadded start offsets."""
+    mask = torch.zeros_like(attention_mask, dtype=torch.bool)
+    lengths = attention_mask.sum(dim=1).tolist()
+    width = tokens.shape[1]
+    for row, (length, start) in enumerate(zip(lengths, response_starts, strict=True)):
+        length = int(length)
+        start = int(start)
+        if not 0 < start < length:
+            raise ValueError(f"Invalid response boundary start={start}, sequence_length={length}.")
+        left_padding = width - length
+        mask[row, left_padding + start : left_padding + length] = True
+    return mask
+
+
+def response_prediction_mask(response_mask: torch.Tensor) -> torch.Tensor:
+    """Return residual positions whose logits predict the response tokens."""
+    if response_mask.ndim != 2:
+        raise ValueError("response mask must have shape [batch, position]")
+    prediction_mask = torch.zeros_like(response_mask, dtype=torch.bool)
+    prediction_mask[:, :-1] = response_mask[:, 1:]
+    if (prediction_mask.sum(dim=1) <= 0).any():
+        raise ValueError("Every transcript must have a response token with a causal predictor.")
+    return prediction_mask
+
+
+def response_logprob_values(
+    logits: torch.Tensor,
+    tokens: torch.Tensor,
+    response_mask: torch.Tensor,
+) -> torch.Tensor:
+    """Mean next-token log probability of each transcript's response span."""
+    if tuple(response_mask.shape) != tuple(tokens.shape):
+        raise ValueError("response mask and token tensors must have identical leading shape")
+    if tuple(logits.shape[:2]) != tuple(tokens.shape):
+        raise ValueError("logits and token tensors must have identical batch/position shape")
+    token_logprobs = logits[:, :-1].float().log_softmax(dim=-1).gather(
+        dim=-1, index=tokens[:, 1:].unsqueeze(-1)
+    ).squeeze(-1)
+    mask = response_mask[:, 1:].to(device=logits.device, dtype=torch.float32)
+    counts = mask.sum(dim=1)
+    if (counts <= 0).any():
+        raise ValueError("Every transcript must contain at least one predicted response token.")
+    return (token_logprobs * mask).sum(dim=1) / counts
+
+
+def steering_coefficient_path(corrupt_coefficient: float, steps: int) -> tuple[float, ...]:
+    """Right-endpoint path from the corrupt coefficient to clean coefficient 0."""
+    if steps <= 0:
+        raise ValueError("steps must be positive")
+    if corrupt_coefficient == 0:
+        raise ValueError("corrupt coefficient must be nonzero")
+    return tuple(
+        float(corrupt_coefficient) * (1.0 - step / steps)
+        for step in range(1, steps + 1)
+    )
+
+
+def attribute_steering_response_logprob(
+    model,
+    graph,
+    transcripts: list[tuple[str, int]],
+    *,
+    raw_direction: torch.Tensor,
+    target_hook: str,
+    corrupt_coefficient: float,
+    config: AttributionConfig,
+) -> dict:
+    """Attribute the behavioral effect along a response-steering path.
+
+    Clean is coefficient 0 and corrupt is a behaviorally validated negative
+    coefficient.  EAP source differences are actual corrupt-minus-clean
+    component outputs.  EAP-IG gradients are averaged along the same
+    coefficient path, and the scalar target is mean autoregressive log
+    probability of an already judged, high-trait response.
+
+    This identifies the downstream circuit that mediates a persona vector's
+    effect on generation logits.  It does not identify the upstream circuit
+    that naturally constructs the vector; free-generation circuit patching is
+    still required for a causal behavioral claim.
+    """
+    if not transcripts:
+        raise ValueError("Attribution requires at least one transcript.")
+    path_coefficients = steering_coefficient_path(corrupt_coefficient, config.ig_steps)
+    if graph.nodes["input"].out_hook != target_hook:
+        raise ValueError("Steering graph input hook does not match the intervention hook.")
+
+    device = next(model.parameters()).device
+    scores = torch.zeros(
+        (graph.n_forward, graph.n_backward), device=device, dtype=torch.float32
+    )
+    total_examples = 0
+    clean_metric_sum = 0.0
+    corrupt_metric_sum = 0.0
+    iterator = tqdm(
+        _batches(transcripts, config.batch_size),
+        total=(len(transcripts) + config.batch_size - 1) // config.batch_size,
+        desc="Steering-path EAP-IG",
+    )
+    for transcript_batch in iterator:
+        texts = [item[0] for item in transcript_batch]
+        starts = [item[1] for item in transcript_batch]
+        tokens, attention_mask = tokenize_prompts(model, texts, max_length=config.max_length)
+        batch_size, n_pos = tokens.shape
+        response_mask = _response_mask(tokens, attention_mask, starts)
+        prediction_mask = response_prediction_mask(response_mask)
+        total_examples += batch_size
+
+        def corrupt_source_transform(source_name: str, activations: torch.Tensor):
+            if source_name != target_hook:
+                return activations
+            vector = raw_direction.to(device=activations.device, dtype=activations.dtype)
+            return activations + (
+                prediction_mask.to(device=activations.device, dtype=activations.dtype)
+                .unsqueeze(-1)
+                * float(corrupt_coefficient)
+                * vector
+            )
+
+        fwd_corrupt, fwd_clean, bwd_hooks, activation_difference = _make_eap_hooks(
+            model,
+            graph,
+            batch_size,
+            n_pos,
+            scores,
+            direction=None,
+            include_logit_gradients=True,
+            corrupt_source_transform=corrupt_source_transform,
+        )
+        corrupt_hook = (
+            target_hook,
+            masked_activation_addition_hook(
+                raw_direction,
+                coefficient=corrupt_coefficient,
+                mask=prediction_mask,
+            ),
+        )
+        with torch.no_grad(), model.hooks(fwd_hooks=fwd_corrupt + [corrupt_hook]):
+            corrupt_logits = _run_forward(
+                model, tokens, attention_mask, fwd_corrupt + [corrupt_hook]
+            )
+            corrupt_values = response_logprob_values(corrupt_logits, tokens, response_mask)
+        with torch.no_grad(), model.hooks(fwd_hooks=fwd_clean):
+            clean_logits = _run_forward(model, tokens, attention_mask, fwd_clean)
+            clean_values = response_logprob_values(clean_logits, tokens, response_mask)
+        clean_metric_sum += float(clean_values.sum().item())
+        corrupt_metric_sum += float(corrupt_values.sum().item())
+
+        for coefficient in path_coefficients:
+            model.zero_grad(set_to_none=True)
+            path_hooks = []
+            if coefficient != 0:
+                path_hooks.append(
+                    (
+                        target_hook,
+                        masked_activation_addition_hook(
+                            raw_direction,
+                            coefficient=coefficient,
+                            mask=prediction_mask,
+                        ),
+                    )
+                )
+            with model.hooks(
+                fwd_hooks=[
+                    (graph.nodes["input"].out_hook, _input_requires_grad),
+                    *path_hooks,
+                ],
+                bwd_hooks=bwd_hooks,
+            ):
+                logits = _run_forward(model, tokens, attention_mask, path_hooks)
+                response_logprob_values(logits, tokens, response_mask).mean().backward()
+
+    scores /= total_examples * config.ig_steps
+    if not torch.isfinite(scores).all():
+        raise RuntimeError("Non-finite steering-path EAP-IG edge scores.")
+    for edge in graph.edges.values():
+        edge.score = float(
+            scores[
+                graph.forward_index(edge.parent, attn_slice=False),
+                graph.backward_index(edge.child, qkv=edge.qkv, attn_slice=False),
+            ].item()
+        )
+    return {
+        "clean_response_logprob": clean_metric_sum / total_examples,
+        "corrupt_response_logprob": corrupt_metric_sum / total_examples,
+        "clean_minus_corrupt": (clean_metric_sum - corrupt_metric_sum) / total_examples,
+        "path_coefficients": list(path_coefficients),
+    }
+
+
+def attribute_response_average(
+    model,
+    graph,
+    transcripts: list[tuple[str, int]],
+    *,
+    direction: torch.Tensor,
+    target_hook: str,
+    config: AttributionConfig,
+    integrated_gradients: bool,
+) -> None:
+    """Attribute mean response-token projection for teacher-forced transcripts.
+
+    Each tuple contains an already formatted prompt+answer string and the
+    response's token offset under the model tokenizer. This exactly matches
+    the response-average statistic used to extract Persona Vectors.
+    """
+    if not transcripts:
+        raise ValueError("Attribution requires at least one transcript.")
+    if integrated_gradients and config.ig_steps <= 0:
+        raise ValueError("ig_steps must be positive.")
+
+    device = next(model.parameters()).device
+    scores = torch.zeros((graph.n_forward, graph.n_backward), device=device, dtype=torch.float32)
+    total_examples = 0
+    iterator = tqdm(
+        _batches(transcripts, config.batch_size),
+        total=(len(transcripts) + config.batch_size - 1) // config.batch_size,
+        desc="Persona EAP-IG" if integrated_gradients else "Persona EAP",
+    )
+    for transcript_batch in iterator:
+        texts = [item[0] for item in transcript_batch]
+        starts = [item[1] for item in transcript_batch]
+        tokens, attention_mask = tokenize_prompts(model, texts, max_length=config.max_length)
+        batch_size, n_pos = tokens.shape
+        response_mask = _response_mask(tokens, attention_mask, starts)
+        total_examples += batch_size
+        fwd_corrupt, fwd_clean, bwd_hooks, activation_difference = _make_eap_hooks(
+            model, graph, batch_size, n_pos, scores, direction
+        )
+        with torch.no_grad(), model.hooks(
+            fwd_hooks=fwd_corrupt + all_layer_ablation_hooks(model, direction, strength=1.0)
+        ):
+            _run_forward(model, tokens, attention_mask, fwd_corrupt)
+        with torch.no_grad(), model.hooks(fwd_hooks=fwd_clean):
+            _run_forward(model, tokens, attention_mask, fwd_clean)
+
+        path_alphas: Iterable[float] = (
+            (step / config.ig_steps for step in range(1, config.ig_steps + 1))
+            if integrated_gradients
+            else (1.0,)
+        )
+        for alpha in path_alphas:
+            model.zero_grad(set_to_none=True)
+            capture = MaskedProjectionCapture(direction=direction, mask=response_mask)
+            metric_hook = [(target_hook, capture.hook)]
+            path_hooks = all_layer_ablation_hooks(model, direction, strength=1.0 - alpha)
+            with model.hooks(
+                fwd_hooks=[("hook_embed", _input_requires_grad)] + path_hooks + metric_hook,
+                bwd_hooks=bwd_hooks,
+            ):
+                _run_forward(model, tokens, attention_mask, path_hooks + metric_hook)
+                if capture.activation is None:
+                    raise RuntimeError("The persona target residual metric hook did not fire.")
+                capture.activation.retain_grad()
+                capture.mean().backward()
+            _accumulate_terminal_metric_scores(scores, activation_difference, graph, capture)
+
+    scores /= total_examples
+    if integrated_gradients:
+        scores /= config.ig_steps
+    if not torch.isfinite(scores).all():
+        raise RuntimeError("Non-finite persona EAP/EAP-IG edge scores; do not interpret this run.")
+    for edge in graph.edges.values():
+        edge.score = float(
+            scores[
+                graph.forward_index(edge.parent, attn_slice=False),
+                graph.backward_index(edge.child, qkv=edge.qkv, attn_slice=False),
+            ].item()
+        )
 
 
 def _input_requires_grad(activations: torch.Tensor, hook) -> torch.Tensor:

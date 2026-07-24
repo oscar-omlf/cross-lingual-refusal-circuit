@@ -9,7 +9,7 @@ import torch
 from tqdm.auto import tqdm
 
 from .interventions import all_layer_ablation_hooks, direction_ablation_hook
-from .metrics import ProjectionCapture, is_refusal, refusal_logit_margin
+from .metrics import MaskedProjectionCapture, ProjectionCapture, is_refusal, refusal_logit_margin
 from .model import tokenize_prompts
 
 
@@ -29,7 +29,14 @@ def _project_away(activations: torch.Tensor, direction: torch.Tensor | None) -> 
     return projected.detach().clone()
 
 
-def _source_cache_hooks(model, graph, cache: dict[str, torch.Tensor], *, corruption_direction=None):
+def _source_cache_hooks(
+    model,
+    graph,
+    cache: dict[str, torch.Tensor],
+    *,
+    corruption_direction=None,
+    cache_transform=None,
+):
     """Cache graph source contributions, including each attention output bias.
 
     TransformerLens exposes head contributions at ``attn.hook_result`` but
@@ -54,9 +61,16 @@ def _source_cache_hooks(model, graph, cache: dict[str, torch.Tensor], *, corrupt
     }
     raw_results: dict[int, torch.Tensor] = {}
 
+    if corruption_direction is not None and cache_transform is not None:
+        raise ValueError("Specify either corruption_direction or cache_transform, not both.")
+
+    def transformed(name: str, activations: torch.Tensor) -> torch.Tensor:
+        value = _project_away(activations, corruption_direction)
+        return cache_transform(name, value) if cache_transform is not None else value
+
     def direct_cache(name: str):
         def hook(activations: torch.Tensor, hook):
-            cache[name] = _project_away(activations, corruption_direction)
+            cache[name] = transformed(name, activations)
             return activations
 
         return hook
@@ -73,8 +87,9 @@ def _source_cache_hooks(model, graph, cache: dict[str, torch.Tensor], *, corrupt
             result = raw_results[layer]
             attention_bias = activations.detach() - result.sum(dim=2)
             effective_heads = result + attention_bias.unsqueeze(2) / result.shape[2]
-            cache[f"blocks.{layer}.attn.hook_result"] = _project_away(
-                effective_heads, corruption_direction
+            name = f"blocks.{layer}.attn.hook_result"
+            cache[name] = transformed(
+                name, effective_heads
             )
             return activations
 
@@ -137,8 +152,13 @@ def _normal_forward(
     target_position: int,
     direction: torch.Tensor,
     fwd_hooks=None,
+    target_mask: torch.Tensor | None = None,
 ):
-    capture = ProjectionCapture(direction=direction, position=target_position)
+    capture = (
+        MaskedProjectionCapture(direction=direction, mask=target_mask)
+        if target_mask is not None
+        else ProjectionCapture(direction=direction, position=target_position)
+    )
     with torch.inference_mode(), model.hooks(fwd_hooks=list(fwd_hooks or []) + [(target_hook, capture.hook)]):
         logits = model(tokens, attention_mask=attention_mask)
     return capture.values().detach(), logits.detach()
@@ -154,6 +174,7 @@ def _mixed_forward(
     target_position: int,
     direction: torch.Tensor,
     patch_selected: bool,
+    target_mask: torch.Tensor | None = None,
 ):
     """Run a clean prompt with selected or unselected edges replaced by corrupt cache."""
     corrupt_cache: dict[str, torch.Tensor] = {}
@@ -166,7 +187,11 @@ def _mixed_forward(
         model(tokens, attention_mask=attention_mask)
 
     mixed_cache: dict[str, torch.Tensor] = {}
-    capture = ProjectionCapture(direction=direction, position=target_position)
+    capture = (
+        MaskedProjectionCapture(direction=direction, mask=target_mask)
+        if target_mask is not None
+        else ProjectionCapture(direction=direction, position=target_position)
+    )
     mixed_hooks = (
         _source_cache_hooks(model, graph, mixed_cache)
         + _construction_hooks(graph, corrupt_cache, mixed_cache, patch_selected=patch_selected)
@@ -175,6 +200,50 @@ def _mixed_forward(
     with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
         logits = model(tokens, attention_mask=attention_mask)
     return capture.values().detach(), logits.detach()
+
+
+def mixed_logits_with_intervention(
+    model,
+    graph,
+    tokens,
+    attention_mask,
+    *,
+    corrupt_fwd_hooks,
+    corrupt_cache_transform,
+    patch_selected: bool,
+):
+    """Patch graph edges from an arbitrary same-token corrupt intervention.
+
+    The intervention hook mutates the model run, while ``corrupt_cache_transform``
+    records the post-intervention value at a graph source whose cache hook must
+    execute before that mutation.  Downstream component caches already observe
+    the intervention through the ordinary forward computation.
+    """
+    corrupt_cache: dict[str, torch.Tensor] = {}
+    cache_hooks = _source_cache_hooks(
+        model,
+        graph,
+        corrupt_cache,
+        cache_transform=corrupt_cache_transform,
+    )
+    with torch.inference_mode(), model.hooks(
+        fwd_hooks=cache_hooks + list(corrupt_fwd_hooks)
+    ):
+        model(tokens, attention_mask=attention_mask)
+
+    mixed_cache: dict[str, torch.Tensor] = {}
+    mixed_hooks = (
+        _source_cache_hooks(model, graph, mixed_cache)
+        + _construction_hooks(
+            graph,
+            corrupt_cache,
+            mixed_cache,
+            patch_selected=patch_selected,
+        )
+    )
+    with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
+        logits = model(tokens, attention_mask=attention_mask)
+    return logits.detach()
 
 
 @dataclass

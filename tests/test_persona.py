@@ -4,7 +4,14 @@ import unittest
 import json
 import runpy
 from pathlib import Path
+from types import SimpleNamespace
 
+from refusal_circuit.eapig import (
+    response_logprob_values,
+    response_prediction_mask,
+    steering_coefficient_path,
+)
+from refusal_circuit.graph import make_steering_to_logits_graph
 from refusal_circuit.persona import (
     COHERENCE_PROMPT,
     aggregate_numeric_logprobs,
@@ -89,6 +96,42 @@ class PersonaProtocolTests(unittest.TestCase):
         self.assertTrue(torch.equal(steered[:, :-1], original[:, :-1]))
         self.assertTrue(torch.equal(steered[:, -1], torch.full((2, 4), 2.0)))
         self.assertTrue(torch.equal(original, torch.zeros_like(original)))
+
+    def test_teacher_forced_prediction_mask_precedes_response_tokens(self):
+        import torch
+
+        response = torch.tensor([[False, False, True, True, True]])
+        expected = torch.tensor([[False, True, True, True, False]])
+        self.assertTrue(torch.equal(response_prediction_mask(response), expected))
+
+    def test_response_logprob_scores_only_causal_response_targets(self):
+        import torch
+
+        tokens = torch.tensor([[0, 1, 2, 1]])
+        response = torch.tensor([[False, False, True, True]])
+        logits = torch.zeros(1, 4, 3)
+        logits[0, 1, 2] = 4.0
+        logits[0, 2, 1] = 4.0
+        value = response_logprob_values(logits, tokens, response)
+        expected = torch.log_softmax(torch.tensor([0.0, 0.0, 4.0]), dim=0)[2]
+        self.assertAlmostEqual(float(value.item()), float(expected.item()), places=6)
+
+    def test_steering_coefficient_path_runs_corrupt_to_clean(self):
+        self.assertEqual(steering_coefficient_path(-2.0, 4), (-1.5, -1.0, -0.5, -0.0))
+
+    def test_steering_graph_has_no_upstream_edges(self):
+        model = SimpleNamespace(
+            cfg=SimpleNamespace(n_layers=4, n_heads=2, parallel_attn_mlp=False)
+        )
+        graph = make_steering_to_logits_graph(model, 2)
+        self.assertEqual(graph.nodes["input"].out_hook, "blocks.2.hook_resid_pre")
+        self.assertNotIn("m1", graph.nodes)
+        self.assertIn("m2", graph.nodes)
+        for edge in graph.edges.values():
+            if edge.parent.name != "input":
+                self.assertGreaterEqual(edge.parent.layer, 2)
+            if edge.child.name != "logits":
+                self.assertGreaterEqual(edge.child.layer, 2)
 
     def test_frozen_upstream_implementation_contract(self):
         root = Path(__file__).resolve().parents[1]
