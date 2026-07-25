@@ -61,10 +61,10 @@
   },
   "vector": {
     "primary_variant": "response_avg_diff",
-    "paper_layer": 20,
-    "hf_hidden_state_index": 20,
-    "transformer_lens_target_hook": "blocks.20.hook_resid_pre",
-    "transformer_lens_steering_block": 19,
+    "paper_layer": 16,
+    "hf_hidden_state_index": 16,
+    "transformer_lens_target_hook": "blocks.16.hook_resid_pre",
+    "transformer_lens_steering_block": 15,
     "target_position": -1,
     "activation_extraction_dtype": "upstream_default",
     "_layer_note": "PROVISIONAL layer, copied from sycophancy. The paper selects a per-trait layer; confirm hallucination's via the steering sweep (persona.steer + persona.select-layer) or by trying layers from the saved all-layer response_avg_diff tensor in the circuit stage. Changing paper_layer/hf_hidden_state_index/transformer_lens_target_hook together re-targets extraction without re-generating."
@@ -83,7 +83,7 @@
   "layer_selection": {
     "candidate_layers_one_indexed": [4, 8, 12, 16, 20, 24, 28],
     "selection_metric": "highest held-out mean trait-expression score at each fixed response-steering coefficient",
-    "paper_selected_layer_one_indexed": 20
+    "paper_selected_layer_one_indexed": 16
   },
   "paths": {
     "official_root": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/hallucinating",
