@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from refusal_circuit.eapig import (
+    interpolation_path,
     response_logprob_values,
     response_prediction_mask,
     steering_coefficient_path,
@@ -118,6 +119,11 @@ class PersonaProtocolTests(unittest.TestCase):
 
     def test_steering_coefficient_path_runs_corrupt_to_clean(self):
         self.assertEqual(steering_coefficient_path(-2.0, 4), (-1.5, -1.0, -0.5, -0.0))
+
+    def test_upstream_interpolation_path_runs_corrupt_to_clean(self):
+        self.assertEqual(interpolation_path(4), (0.25, 0.5, 0.75, 1.0))
+        with self.assertRaises(ValueError):
+            interpolation_path(0)
 
     def test_steering_graph_has_no_upstream_edges(self):
         model = SimpleNamespace(

@@ -44,6 +44,7 @@ def _make_eap_hooks(
     *,
     include_logit_gradients: bool = False,
     corrupt_source_transform: Callable[[str, torch.Tensor], torch.Tensor] | None = None,
+    natural_corrupt: bool = False,
 ):
     """Create upstream EAP cache and gradient hooks with float32 accumulation."""
     from eap.graph import AttentionNode, InputNode, LogitNode
@@ -59,10 +60,18 @@ def _make_eap_hooks(
     bwd: list = []
     attention_nodes: dict[int, object] = {}
 
-    if direction is None and corrupt_source_transform is None:
-        raise ValueError("A direction or corrupt source transform is required.")
-    if direction is not None and corrupt_source_transform is not None:
-        raise ValueError("Specify either direction or corrupt source transform, not both.")
+    corrupt_modes = sum(
+        (
+            direction is not None,
+            corrupt_source_transform is not None,
+            natural_corrupt,
+        )
+    )
+    if corrupt_modes != 1:
+        raise ValueError(
+            "Specify exactly one corrupt mode: direction projection, source "
+            "transform, or a naturally distinct corrupt input."
+        )
 
     def source_value(
         activations: torch.Tensor, *, corrupt: bool, source_name: str
@@ -71,7 +80,7 @@ def _make_eap_hooks(
         if corrupt:
             if corrupt_source_transform is not None:
                 value = corrupt_source_transform(source_name, value)
-            else:
+            elif direction is not None:
                 vector = direction.to(value)
                 vector = vector / vector.norm().clamp_min(1e-8)
                 value = (
@@ -295,6 +304,180 @@ def steering_coefficient_path(corrupt_coefficient: float, steps: int) -> tuple[f
         float(corrupt_coefficient) * (1.0 - step / steps)
         for step in range(1, steps + 1)
     )
+
+
+def interpolation_path(steps: int) -> tuple[float, ...]:
+    """Right-endpoint path from a corrupt state (0) to a clean state (1)."""
+    if steps <= 0:
+        raise ValueError("steps must be positive")
+    return tuple(step / steps for step in range(1, steps + 1))
+
+
+def attribute_contrastive_prompt_projection(
+    model,
+    graph,
+    prompt_pairs: list[tuple[str, str]],
+    *,
+    direction: torch.Tensor,
+    target_hook: str,
+    target_position: int,
+    config: AttributionConfig,
+) -> dict:
+    """Attribute formation of a signed persona projection before generation.
+
+    Each pair is ``(clean_positive_prompt, corrupt_negative_prompt)`` and must
+    have identical token length.  EAP source differences are the actual
+    negative-minus-positive component activations.  EAP-IG interpolates the
+    graph input residual from the negative prompt state to the positive prompt
+    state and targets the final-prompt projection onto the response-derived
+    persona direction.
+
+    Unlike the refusal-style routine, this never projects an activation to
+    zero and never injects a layer-20 vector downstream of the edges being
+    attributed.  It therefore identifies an upstream circuit for the natural
+    positive-versus-negative persona-state contrast.
+    """
+    if not prompt_pairs:
+        raise ValueError("Contrastive prompt attribution requires prompt pairs.")
+    if config.batch_size <= 0:
+        raise ValueError("batch_size must be positive.")
+    path_alphas = interpolation_path(config.ig_steps)
+    device = next(model.parameters()).device
+    scores = torch.zeros(
+        (graph.n_forward, graph.n_backward),
+        device=device,
+        dtype=torch.float32,
+    )
+    total_examples = 0
+    clean_projection_sum = 0.0
+    corrupt_projection_sum = 0.0
+
+    iterator = tqdm(
+        _batches(prompt_pairs, config.batch_size),
+        total=(len(prompt_pairs) + config.batch_size - 1) // config.batch_size,
+        desc="Contrastive upstream EAP-IG",
+    )
+    for pair_batch in iterator:
+        clean_prompts = [pair[0] for pair in pair_batch]
+        corrupt_prompts = [pair[1] for pair in pair_batch]
+        clean_tokens, clean_mask = tokenize_prompts(
+            model, clean_prompts, max_length=config.max_length
+        )
+        corrupt_tokens, corrupt_mask = tokenize_prompts(
+            model, corrupt_prompts, max_length=config.max_length
+        )
+        if tuple(clean_tokens.shape) != tuple(corrupt_tokens.shape):
+            raise ValueError(
+                "Clean and corrupt prompt batches must tokenize to the same shape."
+            )
+        if not torch.equal(clean_mask, corrupt_mask):
+            raise ValueError(
+                "Clean and corrupt attention masks must match; token-align each "
+                "prompt pair before attribution."
+            )
+
+        batch_size, n_pos = clean_tokens.shape
+        total_examples += batch_size
+        fwd_corrupt, fwd_clean, bwd_hooks, activation_difference = _make_eap_hooks(
+            model,
+            graph,
+            batch_size,
+            n_pos,
+            scores,
+            direction=None,
+            natural_corrupt=True,
+        )
+        corrupt_input: dict[str, torch.Tensor] = {}
+        clean_input: dict[str, torch.Tensor] = {}
+
+        def capture_input(store: dict[str, torch.Tensor]):
+            def hook(activations: torch.Tensor, hook):
+                del hook
+                store["value"] = activations.detach()
+                return activations
+
+            return hook
+
+        corrupt_capture, corrupt_metric_hooks = _direction_metric_hooks(
+            target_hook, target_position, direction
+        )
+        with torch.no_grad(), model.hooks(
+            fwd_hooks=[
+                *fwd_corrupt,
+                (graph.nodes["input"].out_hook, capture_input(corrupt_input)),
+                *corrupt_metric_hooks,
+            ]
+        ):
+            _run_forward(model, corrupt_tokens, corrupt_mask, fwd_corrupt)
+        clean_capture, clean_metric_hooks = _direction_metric_hooks(
+            target_hook, target_position, direction
+        )
+        with torch.no_grad(), model.hooks(
+            fwd_hooks=[
+                *fwd_clean,
+                (graph.nodes["input"].out_hook, capture_input(clean_input)),
+                *clean_metric_hooks,
+            ]
+        ):
+            _run_forward(model, clean_tokens, clean_mask, fwd_clean)
+        if "value" not in corrupt_input or "value" not in clean_input:
+            raise RuntimeError("The upstream graph input hook did not fire.")
+        clean_projection_sum += float(clean_capture.values().sum().item())
+        corrupt_projection_sum += float(corrupt_capture.values().sum().item())
+
+        for alpha in path_alphas:
+            model.zero_grad(set_to_none=True)
+            interpolated = (
+                corrupt_input["value"]
+                + float(alpha) * (clean_input["value"] - corrupt_input["value"])
+            ).detach()
+
+            def interpolate_input(activations: torch.Tensor, hook):
+                del activations, hook
+                return interpolated.clone().requires_grad_(True)
+
+            capture, metric_hooks = _direction_metric_hooks(
+                target_hook, target_position, direction
+            )
+            with model.hooks(
+                fwd_hooks=[
+                    (graph.nodes["input"].out_hook, interpolate_input),
+                    *metric_hooks,
+                ],
+                bwd_hooks=bwd_hooks,
+            ):
+                _run_forward(model, clean_tokens, clean_mask, metric_hooks)
+                if capture.activation is None:
+                    raise RuntimeError("The upstream persona metric hook did not fire.")
+                capture.activation.retain_grad()
+                capture.mean().backward()
+            _accumulate_terminal_metric_scores(
+                scores, activation_difference, graph, capture
+            )
+
+    scores /= total_examples * config.ig_steps
+    if not torch.isfinite(scores).all():
+        raise RuntimeError(
+            "Non-finite contrastive upstream EAP-IG scores; do not interpret this run."
+        )
+    for edge in graph.edges.values():
+        edge.score = float(
+            scores[
+                graph.forward_index(edge.parent, attn_slice=False),
+                graph.backward_index(
+                    edge.child, qkv=edge.qkv, attn_slice=False
+                ),
+            ].item()
+        )
+    return {
+        "clean_positive_projection": clean_projection_sum / total_examples,
+        "corrupt_negative_projection": corrupt_projection_sum / total_examples,
+        "clean_minus_corrupt_projection": (
+            clean_projection_sum - corrupt_projection_sum
+        )
+        / total_examples,
+        "path_alphas": list(path_alphas),
+    }
 
 
 def attribute_steering_response_logprob(

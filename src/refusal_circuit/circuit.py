@@ -202,6 +202,52 @@ def _mixed_forward(
     return capture.values().detach(), logits.detach()
 
 
+def mixed_forward_from_prompt_pair(
+    model,
+    graph,
+    clean_tokens,
+    clean_attention_mask,
+    corrupt_tokens,
+    corrupt_attention_mask,
+    *,
+    target_hook: str,
+    target_position: int,
+    direction: torch.Tensor,
+    patch_selected: bool,
+):
+    """Patch clean-prompt edges with a token-aligned natural corrupt prompt.
+
+    The two sequences must have identical shapes and masks so every cached
+    source contribution has an unambiguous token-position counterpart.
+    """
+    if tuple(clean_tokens.shape) != tuple(corrupt_tokens.shape):
+        raise ValueError("Clean and corrupt token tensors must have identical shape.")
+    if not torch.equal(clean_attention_mask, corrupt_attention_mask):
+        raise ValueError("Clean and corrupt attention masks must be identical.")
+
+    corrupt_cache: dict[str, torch.Tensor] = {}
+    with torch.inference_mode(), model.hooks(
+        fwd_hooks=_source_cache_hooks(model, graph, corrupt_cache)
+    ):
+        model(corrupt_tokens, attention_mask=corrupt_attention_mask)
+
+    mixed_cache: dict[str, torch.Tensor] = {}
+    capture = ProjectionCapture(direction=direction, position=target_position)
+    mixed_hooks = (
+        _source_cache_hooks(model, graph, mixed_cache)
+        + _construction_hooks(
+            graph,
+            corrupt_cache,
+            mixed_cache,
+            patch_selected=patch_selected,
+        )
+        + [(target_hook, capture.hook)]
+    )
+    with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
+        logits = model(clean_tokens, attention_mask=clean_attention_mask)
+    return capture.values().detach(), logits.detach()
+
+
 def mixed_logits_with_intervention(
     model,
     graph,
