@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the frozen S0 sycophancy protocol without loading the language model."""
+"""Audit a frozen Persona Vectors protocol without loading the language model."""
 
 from __future__ import annotations
 
@@ -114,8 +114,10 @@ def main() -> None:
     selection = config["layer_selection"]
     if selection["candidate_layers_one_indexed"] != [4, 8, 12, 16, 20, 24, 28]:
         raise RuntimeError("Qwen layer-selection grid differs from the released paper figure")
-    if int(selection["paper_selected_layer_one_indexed"]) != 20:
-        raise RuntimeError("the paper reports sycophancy layer 20 on Qwen")
+    if int(selection["paper_selected_layer_one_indexed"]) != int(
+        vector["paper_layer"]
+    ):
+        raise RuntimeError("selected steering-sweep layer disagrees with vector endpoint")
 
     has_openai_key = bool(os.environ.get("OPENAI_API_KEY"))
     report = {
