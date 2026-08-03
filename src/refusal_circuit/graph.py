@@ -65,8 +65,82 @@ def make_logit_graph(model):
             "The local EAP-IG package is not installed. Run `pip install -e EAP-IG`."
         ) from exc
 
-    graph = Graph.from_model(model)
+    graph = Graph.from_model(
+        {
+            "n_layers": model.cfg.n_layers,
+            "n_heads": model.cfg.n_heads,
+            "parallel_attn_mlp": model.cfg.parallel_attn_mlp,
+        }
+    )
     graph.nodes["input"].out_hook = "blocks.0.hook_resid_pre"
+    return graph
+
+
+def make_steering_to_logits_graph(model, steering_layer: int):
+    """Build the downstream graph from a persona-steering site to logits.
+
+    A response-time persona vector is injected at ``blocks.L.hook_resid_pre``.
+    Treating that intervention as if it originated at the embedding node would
+    create impossible edges from the layer-L activation back into earlier
+    layers.  This graph therefore makes the steering site the input node and
+    removes every node and edge upstream of it.  Node layer numbers and edge
+    names remain absolute model coordinates, so saved circuits can be patched
+    directly into the original model.
+
+    The EAP package's score arrays retain their full-model indexing.  This uses
+    a little more temporary memory than a reindexed graph, but avoids a second,
+    error-prone coordinate system for circuit serialization and evaluation.
+    """
+
+    if not 0 <= steering_layer < model.cfg.n_layers:
+        raise ValueError(
+            f"steering_layer must be in [0, {model.cfg.n_layers - 1}], got {steering_layer}."
+        )
+    try:
+        from eap.graph import Graph, InputNode, LogitNode
+    except ImportError as exc:
+        raise RuntimeError(
+            "The local EAP-IG package is not installed. Run `pip install -e EAP-IG`."
+        ) from exc
+
+    graph = Graph.from_model(
+        {
+            "n_layers": model.cfg.n_layers,
+            "n_heads": model.cfg.n_heads,
+            "parallel_attn_mlp": model.cfg.parallel_attn_mlp,
+        }
+    )
+    input_node = graph.nodes["input"]
+    input_node.layer = steering_layer
+    input_node.out_hook = f"blocks.{steering_layer}.hook_resid_pre"
+
+    retained_nodes = {
+        name: node
+        for name, node in graph.nodes.items()
+        if isinstance(node, (InputNode, LogitNode)) or node.layer >= steering_layer
+    }
+    retained_node_set = set(retained_nodes.values())
+    retained_edges = {
+        name: edge
+        for name, edge in graph.edges.items()
+        if edge.parent in retained_node_set and edge.child in retained_node_set
+    }
+
+    # Rebuild adjacency from the retained edge set so greedy circuit selection
+    # and patching cannot traverse an upstream edge that is absent from
+    # ``graph.edges``.
+    for node in retained_node_set:
+        node.parents.clear()
+        node.parent_edges.clear()
+        node.children.clear()
+        node.child_edges.clear()
+    for edge in retained_edges.values():
+        edge.parent.children.add(edge.child)
+        edge.parent.child_edges.add(edge)
+        edge.child.parents.add(edge.parent)
+        edge.child.parent_edges.add(edge)
+    graph.nodes = retained_nodes
+    graph.edges = retained_edges
     return graph
 
 
