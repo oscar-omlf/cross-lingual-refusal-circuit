@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Judge every frozen Qwen sycophancy layer/coeff steering output."""
+"""Judge every frozen Qwen persona layer/coefficient steering output."""
 
 from __future__ import annotations
 

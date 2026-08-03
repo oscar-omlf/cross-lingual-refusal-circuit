@@ -76,6 +76,10 @@ def main() -> None:
     extraction = config["extraction"]
     model_cfg = config["model"]
     vector_cfg = config["vector"]
+    # Output artefacts are prefixed with the trait slug so a second trait does
+    # not overwrite the first. For the sycophancy config this is "sycophantic",
+    # reproducing the original filenames exactly.
+    trait_slug = config["trait"]["name"]
     intermediate = _resolve(config["paths"]["intermediate_root"])
     positive_path = _resolve(args.positive) if args.positive else intermediate / "judged/pos_scored.jsonl"
     negative_path = _resolve(args.negative) if args.negative else intermediate / "judged/neg_scored.jsonl"
@@ -194,9 +198,9 @@ def main() -> None:
     for variant, vector in vectors.items():
         if vector.shape != (expected_hidden_states, hidden_size) or not torch.isfinite(vector).all():
             raise RuntimeError(f"invalid {variant} vector")
-        torch.save(vector, output_root / f"sycophantic_{variant}_diff.pt")
-        torch.save(means["pos"][variant], output_root / f"sycophantic_{variant}_pos_mean.pt")
-        torch.save(means["neg"][variant], output_root / f"sycophantic_{variant}_neg_mean.pt")
+        torch.save(vector, output_root / f"{trait_slug}_{variant}_diff.pt")
+        torch.save(means["pos"][variant], output_root / f"{trait_slug}_{variant}_pos_mean.pt")
+        torch.save(means["neg"][variant], output_root / f"{trait_slug}_{variant}_neg_mean.pt")
 
     selected_layer = int(vector_cfg["paper_layer"])
     if selected_layer != int(vector_cfg["hf_hidden_state_index"]):
@@ -209,8 +213,8 @@ def main() -> None:
     if not raw_norm > 0:
         raise RuntimeError("selected response-average vector has zero norm")
     unit = raw / raw_norm
-    torch.save(raw, output_root / "sycophantic_direction_raw.pt")
-    torch.save(unit, output_root / "sycophantic_direction.pt")
+    torch.save(raw, output_root / f"{trait_slug}_direction_raw.pt")
+    torch.save(unit, output_root / f"{trait_slug}_direction.pt")
 
     accepted_rows = []
     for positive, negative in pairs:
@@ -261,9 +265,9 @@ def main() -> None:
         "target_position": int(vector_cfg["target_position"]),
         "activation_extraction_dtype": activation_dtype,
         "raw_direction_norm": raw_norm,
-        "paper_selected_raw_vector_file": "sycophantic_direction_raw.pt",
-        "circuit_metric_unit_vector_file": "sycophantic_direction.pt",
-        "all_layer_response_vector_file": "sycophantic_response_avg_diff.pt",
+        "paper_selected_raw_vector_file": f"{trait_slug}_direction_raw.pt",
+        "circuit_metric_unit_vector_file": f"{trait_slug}_direction.pt",
+        "all_layer_response_vector_file": f"{trait_slug}_response_avg_diff.pt",
         "wall_time_seconds": time.time() - started,
     }
     write_json(output_root / "metadata.json", metadata)
