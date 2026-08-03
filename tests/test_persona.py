@@ -4,7 +4,19 @@ import unittest
 import json
 import runpy
 from pathlib import Path
+from types import SimpleNamespace
 
+from refusal_circuit.eapig import (
+    interpolation_path,
+    response_logprob_values,
+    response_prediction_mask,
+    steering_coefficient_path,
+)
+from refusal_circuit.circuit import (
+    _construction_hooks,
+    _sparse_circuit_only_construction_hooks,
+)
+from refusal_circuit.graph import make_steering_to_logits_graph
 from refusal_circuit.persona import (
     COHERENCE_PROMPT,
     aggregate_numeric_logprobs,
@@ -81,6 +93,24 @@ class PersonaProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             hf_hidden_state_to_tl_hook(0)
 
+    def test_hallucination_config_is_trait_specific_and_layer_consistent(self):
+        root = Path(__file__).resolve().parents[1]
+        config = json.loads((root / "configs/qwen_hallucination.json").read_text())
+        self.assertEqual(config["trait"]["name"], "hallucinating")
+        self.assertEqual(config["vector"]["primary_variant"], "response_avg_diff")
+        layer = int(config["vector"]["paper_layer"])
+        self.assertEqual(layer, 16)
+        self.assertEqual(
+            config["vector"]["transformer_lens_target_hook"],
+            hf_hidden_state_to_tl_hook(layer),
+        )
+        self.assertEqual(
+            int(config["layer_selection"]["paper_selected_layer_one_indexed"]),
+            layer,
+        )
+        self.assertIn("extract", config["official_source"]["expected_sha256"])
+        self.assertIn("eval", config["official_source"]["expected_sha256"])
+
     def test_response_steering_matches_upstream_semantics(self):
         import torch
 
@@ -89,6 +119,106 @@ class PersonaProtocolTests(unittest.TestCase):
         self.assertTrue(torch.equal(steered[:, :-1], original[:, :-1]))
         self.assertTrue(torch.equal(steered[:, -1], torch.full((2, 4), 2.0)))
         self.assertTrue(torch.equal(original, torch.zeros_like(original)))
+
+    def test_teacher_forced_prediction_mask_precedes_response_tokens(self):
+        import torch
+
+        response = torch.tensor([[False, False, True, True, True]])
+        expected = torch.tensor([[False, True, True, True, False]])
+        self.assertTrue(torch.equal(response_prediction_mask(response), expected))
+
+    def test_response_logprob_scores_only_causal_response_targets(self):
+        import torch
+
+        tokens = torch.tensor([[0, 1, 2, 1]])
+        response = torch.tensor([[False, False, True, True]])
+        logits = torch.zeros(1, 4, 3)
+        logits[0, 1, 2] = 4.0
+        logits[0, 2, 1] = 4.0
+        value = response_logprob_values(logits, tokens, response)
+        expected = torch.log_softmax(torch.tensor([0.0, 0.0, 4.0]), dim=0)[2]
+        self.assertAlmostEqual(float(value.item()), float(expected.item()), places=6)
+
+    def test_steering_coefficient_path_runs_corrupt_to_clean(self):
+        self.assertEqual(steering_coefficient_path(-2.0, 4), (-1.5, -1.0, -0.5, -0.0))
+
+    def test_upstream_interpolation_path_runs_corrupt_to_clean(self):
+        self.assertEqual(interpolation_path(4), (0.25, 0.5, 0.75, 1.0))
+        with self.assertRaises(ValueError):
+            interpolation_path(0)
+
+    def test_steering_graph_has_no_upstream_edges(self):
+        model = SimpleNamespace(
+            cfg=SimpleNamespace(n_layers=4, n_heads=2, parallel_attn_mlp=False)
+        )
+        graph = make_steering_to_logits_graph(model, 2)
+        self.assertEqual(graph.nodes["input"].out_hook, "blocks.2.hook_resid_pre")
+        self.assertNotIn("m1", graph.nodes)
+        self.assertIn("m2", graph.nodes)
+        for edge in graph.edges.values():
+            if edge.parent.name != "input":
+                self.assertGreaterEqual(edge.parent.layer, 2)
+            if edge.child.name != "logits":
+                self.assertGreaterEqual(edge.child.layer, 2)
+
+    def test_sparse_circuit_only_matches_dense_edge_patching(self):
+        """The scalable circuit-only algebra must preserve patch semantics."""
+        import torch
+        from eap.graph import Graph
+
+        graph = Graph.from_model(
+            {"n_layers": 1, "n_heads": 2, "parallel_attn_mlp": False}
+        )
+        for node in graph.nodes.values():
+            node.in_graph = False
+        for edge in graph.edges.values():
+            edge.in_graph = False
+        graph.nodes["m0"].in_graph = True
+        selected = graph.edges["input->m0"]
+        selected.in_graph = True
+        selected.parent.in_graph = True
+
+        generator = torch.Generator().manual_seed(7)
+        mixed_sources = {
+            "hook_embed": torch.randn(1, 3, 4, generator=generator),
+            "blocks.0.attn.hook_result": torch.randn(
+                1, 3, 2, 4, generator=generator
+            ),
+        }
+        corrupt_sources = {
+            name: torch.randn(value.shape, generator=generator)
+            for name, value in mixed_sources.items()
+        }
+        mixed_input = (
+            mixed_sources["hook_embed"]
+            + mixed_sources["blocks.0.attn.hook_result"].sum(dim=2)
+        )
+        corrupt_input = (
+            corrupt_sources["hook_embed"]
+            + corrupt_sources["blocks.0.attn.hook_result"].sum(dim=2)
+        )
+
+        dense = mixed_input.clone()
+        for name, hook in _construction_hooks(
+            graph,
+            corrupt_sources,
+            mixed_sources,
+            patch_selected=False,
+        ):
+            if name == "blocks.0.hook_mlp_in":
+                dense = hook(dense, None)
+
+        sparse = mixed_input.clone()
+        for name, hook in _sparse_circuit_only_construction_hooks(
+            graph,
+            corrupt_sources,
+            mixed_sources,
+            {("m0", None): corrupt_input},
+        ):
+            if name == "blocks.0.hook_mlp_in":
+                sparse = hook(sparse, None)
+
+        self.assertTrue(torch.allclose(sparse, dense, atol=1e-6, rtol=0))
 
     def test_frozen_upstream_implementation_contract(self):
         root = Path(__file__).resolve().parents[1]

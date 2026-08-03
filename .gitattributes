@@ -1,0 +1,2 @@
+# Preserve byte-for-byte official Persona Vectors source snapshots and hashes.
+data/raw/persona_vectors/**/hallucinating/*_source.py whitespace=-trailing-space
