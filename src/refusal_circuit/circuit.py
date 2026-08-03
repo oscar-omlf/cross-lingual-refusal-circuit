@@ -9,7 +9,7 @@ import torch
 from tqdm.auto import tqdm
 
 from .interventions import all_layer_ablation_hooks, direction_ablation_hook
-from .metrics import ProjectionCapture, is_refusal, refusal_logit_margin
+from .metrics import MaskedProjectionCapture, ProjectionCapture, is_refusal, refusal_logit_margin
 from .model import tokenize_prompts
 
 
@@ -29,7 +29,16 @@ def _project_away(activations: torch.Tensor, direction: torch.Tensor | None) -> 
     return projected.detach().clone()
 
 
-def _source_cache_hooks(model, graph, cache: dict[str, torch.Tensor], *, corruption_direction=None):
+def _source_cache_hooks(
+    model,
+    graph,
+    cache: dict[str, torch.Tensor],
+    *,
+    corruption_direction=None,
+    cache_transform=None,
+    selected_only: bool = False,
+    storage_dtype: torch.dtype | None = None,
+):
     """Cache graph source contributions, including each attention output bias.
 
     TransformerLens exposes head contributions at ``attn.hook_result`` but
@@ -45,7 +54,16 @@ def _source_cache_hooks(model, graph, cache: dict[str, torch.Tensor], *, corrupt
     """
     from eap.graph import AttentionNode
 
-    parents = {edge.parent for edge in graph.edges.values()}
+    # Selected-edge ablation never reads sources for unselected edges in
+    # ``_construction_hooks``.  Avoid retaining the full graph's activations
+    # during long autoregressive generation; this is exactly equivalent while
+    # preventing cache memory from growing with every eligible layer/source.
+    relevant_edges = (
+        (edge for edge in graph.edges.values() if edge.in_graph)
+        if selected_only
+        else graph.edges.values()
+    )
+    parents = {edge.parent for edge in relevant_edges}
     attention_layers = sorted({node.layer for node in parents if isinstance(node, AttentionNode)})
     direct_names = {
         node.out_hook
@@ -54,9 +72,19 @@ def _source_cache_hooks(model, graph, cache: dict[str, torch.Tensor], *, corrupt
     }
     raw_results: dict[int, torch.Tensor] = {}
 
+    if corruption_direction is not None and cache_transform is not None:
+        raise ValueError("Specify either corruption_direction or cache_transform, not both.")
+
+    def transformed(name: str, activations: torch.Tensor) -> torch.Tensor:
+        value = _project_away(activations, corruption_direction)
+        value = cache_transform(name, value) if cache_transform is not None else value
+        if storage_dtype is not None:
+            value = value.to(dtype=storage_dtype)
+        return value.detach().clone()
+
     def direct_cache(name: str):
         def hook(activations: torch.Tensor, hook):
-            cache[name] = _project_away(activations, corruption_direction)
+            cache[name] = transformed(name, activations)
             return activations
 
         return hook
@@ -70,11 +98,12 @@ def _source_cache_hooks(model, graph, cache: dict[str, torch.Tensor], *, corrupt
 
     def attention_output_cache(layer: int):
         def hook(activations: torch.Tensor, hook):
-            result = raw_results[layer]
+            result = raw_results.pop(layer)
             attention_bias = activations.detach() - result.sum(dim=2)
             effective_heads = result + attention_bias.unsqueeze(2) / result.shape[2]
-            cache[f"blocks.{layer}.attn.hook_result"] = _project_away(
-                effective_heads, corruption_direction
+            name = f"blocks.{layer}.attn.hook_result"
+            cache[name] = transformed(
+                name, effective_heads
             )
             return activations
 
@@ -88,6 +117,124 @@ def _source_cache_hooks(model, graph, cache: dict[str, torch.Tensor], *, corrupt
                 (f"blocks.{layer}.hook_attn_out", attention_output_cache(layer)),
             ]
         )
+    return hooks
+
+
+def _receiver_cache_hooks(
+    graph,
+    cache: dict[tuple[str, str | None], torch.Tensor],
+    *,
+    storage_dtype: torch.dtype | None = None,
+):
+    """Cache only the receiving slices needed by a selected circuit.
+
+    A conventional circuit-only run patches every unselected edge, which is
+    algebraically correct but needlessly loops over nearly the full model
+    graph.  The equivalent sparse construction starts from each corrupt node
+    input and adds back the clean-minus-corrupt contribution of selected
+    parents.  This helper retains one receiving slice per selected node rather
+    than every unselected parent contribution.
+    """
+    from eap.graph import AttentionNode, InputNode, LogitNode, MLPNode
+
+    hooks = []
+    for node in graph.nodes.values():
+        if isinstance(node, InputNode):
+            continue
+        if not node.in_graph and not isinstance(node, LogitNode):
+            continue
+
+        def make_hook(current_node, qkv=None):
+            key = (current_node.name, qkv)
+            index = current_node.index
+
+            def hook(activations: torch.Tensor, hook):
+                del hook
+                value = activations[index].detach()
+                if storage_dtype is not None:
+                    value = value.to(dtype=storage_dtype)
+                cache[key] = value.clone()
+                return activations
+
+            return hook
+
+        if isinstance(node, (LogitNode, MLPNode)):
+            hooks.append((node.in_hook, make_hook(node)))
+        elif isinstance(node, AttentionNode):
+            for index, qkv in enumerate("qkv"):
+                hooks.append((node.qkv_inputs[index], make_hook(node, qkv=qkv)))
+        else:  # pragma: no cover - guarded by EAP graph node types
+            raise TypeError(f"Unknown graph node type {type(node)!r}")
+    return hooks
+
+
+def _sparse_circuit_only_construction_hooks(
+    graph,
+    corrupt_sources: dict[str, torch.Tensor],
+    mixed_sources: dict[str, torch.Tensor],
+    corrupt_receivers: dict[tuple[str, str | None], torch.Tensor],
+):
+    """Construct circuit-only node inputs using only selected-edge deltas.
+
+    For a receiving node with parent set ``P`` and retained parents ``C``, the
+    dense intervention is
+
+      sum(P_mixed) - sum(P\\C_mixed) + sum(P\\C_corrupt)
+
+    which is exactly
+
+      input_corrupt + sum(C_mixed - C_corrupt).
+
+    The second form scales with circuit size, preserves the same counterfactual
+    semantics, and avoids retaining or patching hundreds of thousands of
+    unselected edges during autoregressive generation.
+    """
+    from eap.graph import AttentionNode, InputNode, LogitNode, MLPNode
+
+    hooks = []
+    for node in graph.nodes.values():
+        if isinstance(node, InputNode):
+            continue
+        if not node.in_graph and not isinstance(node, LogitNode):
+            continue
+
+        def make_hook(current_node, qkv=None):
+            key = (current_node.name, qkv)
+            index = current_node.index
+            selected_edges = tuple(
+                edge
+                for edge in current_node.parent_edges
+                if edge.qkv == qkv and edge.in_graph
+            )
+
+            def hook(activations: torch.Tensor, hook):
+                del hook
+                device = activations.device
+                value = corrupt_receivers[key].to(
+                    device=device, dtype=torch.float32
+                )
+                for edge in selected_edges:
+                    clean_source = mixed_sources[edge.parent.out_hook][
+                        edge.parent.index
+                    ].to(device=device, dtype=torch.float32)
+                    corrupt_source = corrupt_sources[edge.parent.out_hook][
+                        edge.parent.index
+                    ].to(device=device, dtype=torch.float32)
+                    value = value + clean_source - corrupt_source
+                activations[index] = value.to(dtype=activations.dtype)
+                return activations
+
+            return hook
+
+        if isinstance(node, (LogitNode, MLPNode)):
+            hooks.append((node.in_hook, make_hook(node)))
+        elif isinstance(node, AttentionNode):
+            for hook_index, qkv in enumerate("qkv"):
+                hooks.append(
+                    (node.qkv_inputs[hook_index], make_hook(node, qkv=qkv))
+                )
+        else:  # pragma: no cover - guarded by EAP graph node types
+            raise TypeError(f"Unknown graph node type {type(node)!r}")
     return hooks
 
 
@@ -112,8 +259,10 @@ def _construction_hooks(graph, corrupt_cache, mixed_cache, *, patch_selected: bo
                     clean_source = mixed_cache[edge.parent.out_hook][edge.parent.index]
                     corrupt_source = corrupt_cache[edge.parent.out_hook][edge.parent.index]
                     activations[edge.index] = (
-                        activations[edge.index] - clean_source + corrupt_source
-                    )
+                        activations[edge.index].float()
+                        - clean_source.float()
+                        + corrupt_source.float()
+                    ).to(dtype=activations.dtype)
                 return activations
 
             return hook
@@ -137,8 +286,13 @@ def _normal_forward(
     target_position: int,
     direction: torch.Tensor,
     fwd_hooks=None,
+    target_mask: torch.Tensor | None = None,
 ):
-    capture = ProjectionCapture(direction=direction, position=target_position)
+    capture = (
+        MaskedProjectionCapture(direction=direction, mask=target_mask)
+        if target_mask is not None
+        else ProjectionCapture(direction=direction, position=target_position)
+    )
     with torch.inference_mode(), model.hooks(fwd_hooks=list(fwd_hooks or []) + [(target_hook, capture.hook)]):
         logits = model(tokens, attention_mask=attention_mask)
     return capture.values().detach(), logits.detach()
@@ -154,27 +308,184 @@ def _mixed_forward(
     target_position: int,
     direction: torch.Tensor,
     patch_selected: bool,
+    target_mask: torch.Tensor | None = None,
+    cache_dtype: torch.dtype | None = None,
 ):
     """Run a clean prompt with selected or unselected edges replaced by corrupt cache."""
     corrupt_cache: dict[str, torch.Tensor] = {}
-    with torch.inference_mode(), model.hooks(
-        fwd_hooks=_source_cache_hooks(
-            model, graph, corrupt_cache, corruption_direction=direction
+    corrupt_receivers: dict[tuple[str, str | None], torch.Tensor] = {}
+    corrupt_hooks = _source_cache_hooks(
+        model,
+        graph,
+        corrupt_cache,
+        corruption_direction=direction,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    corrupt_hooks += all_layer_ablation_hooks(model, direction)
+    if not patch_selected:
+        # Receiver hooks follow the corruption hooks so a shared residual hook
+        # records the actual counterfactual node input.
+        corrupt_hooks += _receiver_cache_hooks(
+            graph, corrupt_receivers, storage_dtype=cache_dtype
         )
-        + all_layer_ablation_hooks(model, direction)
+    with torch.inference_mode(), model.hooks(fwd_hooks=corrupt_hooks):
+        model(tokens, attention_mask=attention_mask)
+
+    mixed_cache: dict[str, torch.Tensor] = {}
+    capture = (
+        MaskedProjectionCapture(direction=direction, mask=target_mask)
+        if target_mask is not None
+        else ProjectionCapture(direction=direction, position=target_position)
+    )
+    mixed_hooks = _source_cache_hooks(
+        model,
+        graph,
+        mixed_cache,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    mixed_hooks += (
+        _construction_hooks(
+            graph, corrupt_cache, mixed_cache, patch_selected=True
+        )
+        if patch_selected
+        else _sparse_circuit_only_construction_hooks(
+            graph, corrupt_cache, mixed_cache, corrupt_receivers
+        )
+    )
+    mixed_hooks += [(target_hook, capture.hook)]
+    with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
+        logits = model(tokens, attention_mask=attention_mask)
+    return capture.values().detach(), logits.detach()
+
+
+def mixed_forward_from_prompt_pair(
+    model,
+    graph,
+    clean_tokens,
+    clean_attention_mask,
+    corrupt_tokens,
+    corrupt_attention_mask,
+    *,
+    target_hook: str,
+    target_position: int,
+    direction: torch.Tensor,
+    patch_selected: bool,
+    cache_dtype: torch.dtype | None = None,
+):
+    """Patch clean-prompt edges with a token-aligned natural corrupt prompt.
+
+    The two sequences must have identical shapes and masks so every cached
+    source contribution has an unambiguous token-position counterpart.
+    """
+    if tuple(clean_tokens.shape) != tuple(corrupt_tokens.shape):
+        raise ValueError("Clean and corrupt token tensors must have identical shape.")
+    if not torch.equal(clean_attention_mask, corrupt_attention_mask):
+        raise ValueError("Clean and corrupt attention masks must be identical.")
+
+    corrupt_cache: dict[str, torch.Tensor] = {}
+    corrupt_receivers: dict[tuple[str, str | None], torch.Tensor] = {}
+    corrupt_hooks = _source_cache_hooks(
+        model,
+        graph,
+        corrupt_cache,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    if not patch_selected:
+        corrupt_hooks += _receiver_cache_hooks(
+            graph, corrupt_receivers, storage_dtype=cache_dtype
+        )
+    with torch.inference_mode(), model.hooks(
+        fwd_hooks=corrupt_hooks
+    ):
+        model(corrupt_tokens, attention_mask=corrupt_attention_mask)
+
+    mixed_cache: dict[str, torch.Tensor] = {}
+    capture = ProjectionCapture(direction=direction, position=target_position)
+    mixed_hooks = _source_cache_hooks(
+        model,
+        graph,
+        mixed_cache,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    mixed_hooks += (
+        _construction_hooks(
+            graph, corrupt_cache, mixed_cache, patch_selected=True
+        )
+        if patch_selected
+        else _sparse_circuit_only_construction_hooks(
+            graph, corrupt_cache, mixed_cache, corrupt_receivers
+        )
+    )
+    mixed_hooks += [(target_hook, capture.hook)]
+    with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
+        logits = model(clean_tokens, attention_mask=clean_attention_mask)
+    return capture.values().detach(), logits.detach()
+
+
+def mixed_logits_with_intervention(
+    model,
+    graph,
+    tokens,
+    attention_mask,
+    *,
+    corrupt_fwd_hooks,
+    corrupt_cache_transform,
+    patch_selected: bool,
+    cache_dtype: torch.dtype | None = None,
+):
+    """Patch graph edges from an arbitrary same-token corrupt intervention.
+
+    The intervention hook mutates the model run, while ``corrupt_cache_transform``
+    records the post-intervention value at a graph source whose cache hook must
+    execute before that mutation.  Downstream component caches already observe
+    the intervention through the ordinary forward computation.
+    """
+    corrupt_cache: dict[str, torch.Tensor] = {}
+    corrupt_receivers: dict[tuple[str, str | None], torch.Tensor] = {}
+    cache_hooks = _source_cache_hooks(
+        model,
+        graph,
+        corrupt_cache,
+        cache_transform=corrupt_cache_transform,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    receiver_hooks = (
+        _receiver_cache_hooks(
+            graph, corrupt_receivers, storage_dtype=cache_dtype
+        )
+        if not patch_selected
+        else []
+    )
+    with torch.inference_mode(), model.hooks(
+        fwd_hooks=cache_hooks + list(corrupt_fwd_hooks) + receiver_hooks
     ):
         model(tokens, attention_mask=attention_mask)
 
     mixed_cache: dict[str, torch.Tensor] = {}
-    capture = ProjectionCapture(direction=direction, position=target_position)
-    mixed_hooks = (
-        _source_cache_hooks(model, graph, mixed_cache)
-        + _construction_hooks(graph, corrupt_cache, mixed_cache, patch_selected=patch_selected)
-        + [(target_hook, capture.hook)]
+    mixed_hooks = _source_cache_hooks(
+        model,
+        graph,
+        mixed_cache,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    mixed_hooks += (
+        _construction_hooks(
+            graph, corrupt_cache, mixed_cache, patch_selected=True
+        )
+        if patch_selected
+        else _sparse_circuit_only_construction_hooks(
+            graph, corrupt_cache, mixed_cache, corrupt_receivers
+        )
     )
     with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
         logits = model(tokens, attention_mask=attention_mask)
-    return capture.values().detach(), logits.detach()
+    return logits.detach()
 
 
 @dataclass

@@ -214,6 +214,8 @@ tempCodeRunnerFile.py
 /papers.zip
 /results.zip
 /data/intermediate/persona/
+/data/raw/sycophancy-eval/
+/results/
 
 # Ruff stuff:
 .ruff_cache/
