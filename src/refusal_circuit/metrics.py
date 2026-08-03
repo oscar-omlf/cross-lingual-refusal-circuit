@@ -90,6 +90,40 @@ class ProjectionCapture:
         return self.values().mean()
 
 
+@dataclass
+class MaskedProjectionCapture:
+    """Score a direction after averaging a variable response-token span."""
+
+    direction: torch.Tensor
+    mask: torch.Tensor
+    activation: torch.Tensor | None = None
+
+    def hook(self, activations: torch.Tensor, hook):
+        if tuple(self.mask.shape) != tuple(activations.shape[:2]):
+            raise ValueError(
+                f"response mask {tuple(self.mask.shape)} does not match activations "
+                f"{tuple(activations.shape[:2])}"
+            )
+        self.activation = activations
+        return activations
+
+    def values(self) -> torch.Tensor:
+        if self.activation is None:
+            raise RuntimeError("MaskedProjectionCapture was read before its hook ran.")
+        activation = self.activation.float()
+        direction = self.direction.to(device=activation.device, dtype=torch.float32)
+        direction = direction / direction.norm().clamp_min(1e-8)
+        projections = torch.einsum("bpd,d->bp", activation, direction)
+        mask = self.mask.to(device=activation.device, dtype=torch.float32)
+        counts = mask.sum(dim=1)
+        if (counts <= 0).any():
+            raise ValueError("Every transcript must contain at least one response token.")
+        return (projections * mask).sum(dim=1) / counts
+
+    def mean(self) -> torch.Tensor:
+        return self.values().mean()
+
+
 def refusal_logit_margin(
     logits: torch.Tensor,
     refusal_token_ids: list[int],
