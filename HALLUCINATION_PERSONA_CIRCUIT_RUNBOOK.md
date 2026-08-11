@@ -22,7 +22,7 @@ INTERMEDIATE=data/intermediate/persona/qwen2.5-7b-instruct/hallucinating
 RESULTS=results/qwen2.5-7b-instruct/persona/hallucinating
 MANIFEST=$INTERMEDIATE/shared_circuit_dataset_v1.json
 UP=hallucination_shared_n64_ig5_v1
-DN=hallucination_shared_n64_ig5_cneg_v1
+DN=hallucination_shared_n64_ig5_cneg_v1_lowmem_v1
 QUESTIONS="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19"
 K_ALL="50 100 250 500 1000 2000 3000"
 K_SUFF="50 250 1000 3000"
@@ -109,13 +109,15 @@ after review.
 
 ## 3. Freeze one shared discovery/evaluation split
 
-This uses the same 64 unique prompt identities for upstream and downstream
+This uses the same unique prompt identities for upstream and downstream
 discovery, plus 32 response-disjoint pairs for downstream internal evaluation.
-The official `eval.json` questions remain disjoint behavioral evaluation data.
+For Hallucination, the strict token-alignment gate currently leaves 33 unique
+discovery prompt identities, not 64. The official `eval.json` questions remain
+disjoint behavioral evaluation data.
 
 ```bash
 uv run python scripts/rq.py persona.freeze-shared-circuit-dataset \
-  --config "$CONFIG" --discovery-prompts 64 --downstream-eval-pairs 32 \
+  --config "$CONFIG" --discovery-prompts 33 --downstream-eval-pairs 32 \
   --seed 20260726 --max-transcript-length 768
 ```
 
@@ -129,7 +131,7 @@ the scalar is final-prompt projection onto the unit Hallucination vector.
 
 ```text
 persona.run-upstream-contrastive-eapig
---config configs/qwen_hallucination.json --run-name hallucination_shared_n64_ig5_v1 --sample-manifest data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/shared_circuit_dataset_v1.json --num-pairs 64 --batch-size 1 --max-length 512 --ig-steps 5 --k 3000
+--config configs/qwen_hallucination.json --run-name hallucination_shared_n64_ig5_v1 --sample-manifest data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/shared_circuit_dataset_v1.json --num-pairs 33 --batch-size 1 --max-length 512 --ig-steps 5 --k 3000
 ```
 
 Derive all nested masks from the single frozen score table (CPU; do not rerun
@@ -149,7 +151,9 @@ persona.evaluate-upstream-contrastive-circuit
 ```
 
 Generate the first 20-question behavioral artifact at `k=3000`; this also
-creates the reusable greedy normal baseline:
+creates the reusable greedy normal baseline. The artifact may contain fewer
+than 20 rows only if a question/instruction pair still fails the shared
+token-alignment gate:
 
 ```text
 persona.behavior-upstream-contrastive-circuit
@@ -175,7 +179,7 @@ reduces Hallucination behavior. Use the judged upstream normal responses:
 
 ```text
 persona.vector-diagnostic
---config configs/qwen_hallucination.json --source data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/natural_upstream_circuit_behavior/hallucination_shared_n64_ig5_v1/k3000_qall_max640_necessity_final/responses.jsonl --source-scored data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/natural_upstream_circuit_behavior/hallucination_shared_n64_ig5_v1/k3000_qall_max640_necessity_final/scored.jsonl --num-questions 10 --max-new-tokens 640 --negative-coefficients -1.5 -2.0
+--config configs/qwen_hallucination.json --source data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/natural_upstream_circuit_behavior/hallucination_shared_n64_ig5_v1/k3000_qall_max640_necessity_final/responses.jsonl --source-scored data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/natural_upstream_circuit_behavior/hallucination_shared_n64_ig5_v1/k3000_qall_max640_necessity_final/scored.jsonl --num-questions 8 --max-new-tokens 640 --negative-coefficients -1.5 -2.0 --output-root data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/vector_intervention_diagnostic/top8_high_baseline
 ```
 
 Judge its `responses.jsonl`. Select the smallest negative coefficient that
@@ -185,13 +189,17 @@ substantially lowers judged Hallucination while preserving coherence; call it
 ## 6. Downstream expression circuit
 
 Rank every edge from the layer-16 vector interface to logits. For each of the
-same 64 prompts, the objective is mean log-probability of its high-Hallucination
-answer minus its low-Hallucination answer under the identical positive prompt;
-edge scores are averaged across all pairs and five coefficient-path IG steps.
+same 33 manifest prompts, the objective is mean log-probability of its
+high-Hallucination answer minus its low-Hallucination answer under the identical
+positive prompt; edge scores are averaged across all pairs and five
+coefficient-path IG steps. This step is memory-bound on 40 GB A100 nodes, so
+use the low-memory rerun settings below rather than the initial 768-token draft.
+If 256 still OOMs on your cluster, retry at 128; keep the same manifest and
+coefficient so the run remains provenance-equivalent.
 
 ```text
 persona.run-steering-eapig
---config configs/qwen_hallucination.json --run-name hallucination_shared_n64_ig5_cneg_v1 --sample-manifest data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/shared_circuit_dataset_v1.json --num-prompts 64 --batch-size 1 --max-length 768 --ig-steps 5 --corrupt-coefficient CNEG --minimum-trait-score 80 --maximum-negative-trait-score 20 --minimum-coherence-score 80 --metric contrastive_response_logprob --k-values 3000
+--config configs/qwen_hallucination.json --run-name hallucination_shared_n64_ig5_cneg_v1_lowmem_v1 --sample-manifest data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/shared_circuit_dataset_v1.json --num-prompts 33 --batch-size 1 --max-length 256 --ig-steps 5 --corrupt-coefficient CNEG --minimum-trait-score 80 --maximum-negative-trait-score 20 --minimum-coherence-score 80 --metric contrastive_response_logprob --k-values 3000
 ```
 
 Derive nested masks on CPU:
@@ -205,7 +213,7 @@ For every `$K_ALL`, evaluate the 32 response-disjoint manifest pairs:
 
 ```text
 persona.evaluate-steering-circuit
---config configs/qwen_hallucination.json --run-name hallucination_shared_n64_ig5_cneg_v1 --sample-manifest data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/shared_circuit_dataset_v1.json --k K --num-prompts 32 --batch-size 1 --max-length 768
+--config configs/qwen_hallucination.json --run-name hallucination_shared_n64_ig5_cneg_v1_lowmem_v1 --sample-manifest data/intermediate/persona/qwen2.5-7b-instruct/hallucinating/shared_circuit_dataset_v1.json --k K --num-prompts 32 --batch-size 1 --max-length 256
 ```
 
 Behaviorally sweep necessity (`normal circuit_ablated`) for `$K_ALL` and
@@ -214,7 +222,7 @@ sufficiency (`normal circuit_only`) for `$K_SUFF`, always using all 20 questions
 
 ```text
 persona.behavior-steering-circuit
---config configs/qwen_hallucination.json --run-name hallucination_shared_n64_ig5_cneg_v1 --k K --output-tag kK_qall_max640_REGIME_final --question-indices 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 --max-new-tokens 640 --max-length 512 --baseline-responses BASELINE_RESPONSES --conditions normal CONDITION --resume
+--config configs/qwen_hallucination.json --run-name hallucination_shared_n64_ig5_cneg_v1_lowmem_v1 --k K --output-tag kK_qall_max640_REGIME_final --question-indices 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 --max-new-tokens 640 --max-length 256 --baseline-responses BASELINE_RESPONSES --conditions normal CONDITION --resume
 ```
 
 Judge every output with the canonical eval rubric.
@@ -249,3 +257,10 @@ The analyzer refuses to mark the suite complete if any registered internal,
 necessity, or sufficiency cell is missing. Preserve every score table, circuit
 JSON, generation metadata file, and judge metadata file; generated results are
 intentionally Git-ignored.
+
+JOBID=$(sbatch \
+  --partition=gpu_a100 --gres=gpu:a100:1 --cpus-per-task=18 --mem=64G --time=12:00:00 \
+  --job-name=hall-dn-eval-k50 \
+  --export="ALL,RQ_COMMAND=persona.evaluate-steering-circuit,RQ_ARGS=--config $CONFIG --run-name hallucination_shared_n64_ig5_cneg_v1_lowmem_v1 --sample-manifest $MANIFEST --k 50 --num-prompts 32 --batch-size 1 --max-length 256" \
+  scripts/slurm/rq_job.sbatch | awk '{print $4}')
+echo "Submitted: $JOBID"

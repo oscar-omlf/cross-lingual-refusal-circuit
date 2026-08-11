@@ -92,6 +92,27 @@ def main() -> None:
                 tokenize=False,
                 add_generation_prompt=True,
             )
+            positive_ids = model.tokenizer.encode(
+                positive_prompt, add_special_tokens=False
+            )
+            negative_system = make_system_prompt(
+                config["trait"]["negative_assistant_name"], instruction["neg"]
+            )
+            negative_prompt = model.tokenizer.apply_chat_template(
+                [
+                    {"role": "system", "content": negative_system},
+                    {"role": "user", "content": question},
+                ],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            negative_ids = model.tokenizer.encode(
+                negative_prompt, add_special_tokens=False
+            )
+            # Skip pairs that cannot be token-aligned; this is the same
+            # alignment requirement used by the upstream EAP-IG discovery path.
+            if len(negative_ids) > len(positive_ids):
+                continue
             aligned, alignment = _align_negative_prompt(
                 model.tokenizer,
                 question=question,

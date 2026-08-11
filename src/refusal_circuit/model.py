@@ -61,6 +61,87 @@ def configure_eap_hooks(model) -> None:
         setter(True)
 
 
+def memory_efficient_complex_attn_linear(
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    bias: torch.Tensor,
+    *,
+    position_chunk_size: int = 32,
+) -> torch.Tensor:
+    """Apply TransformerLens' split-head projection in bounded chunks.
+
+    TransformerLens' pinned ``complex_attn_linear`` first forms a tensor with
+    shape ``[batch, position, head, d_model, d_head]`` and then reduces over
+    ``d_model``. At long sequence lengths that temporary exceeds an A100-40GB.
+    Splitting only independent sequence positions preserves the complete
+    ``[d_model, d_head]`` elementwise multiply and reduction layout of the
+    pinned implementation while bounding the temporary allocation.
+    """
+    if position_chunk_size <= 0:
+        raise ValueError("position_chunk_size must be positive")
+    if input.device != weight.device:
+        weight = weight.to(input.device)
+    if input.device != bias.device:
+        bias = bias.to(input.device)
+    output = torch.empty(
+        *input.shape[:-1],
+        weight.shape[-1],
+        device=input.device,
+        dtype=input.dtype,
+    )
+    for start in range(0, input.shape[1], position_chunk_size):
+        stop = min(start + position_chunk_size, input.shape[1])
+        output[:, start:stop] = (
+            input[:, start:stop].unsqueeze(-1) * weight[None, None]
+        ).sum(dim=-2)
+    return output + bias
+
+
+def validate_memory_efficient_split_qkv_projection(model) -> None:
+    """Fail before generation unless chunking matches pinned TL on the GPU."""
+    attention = model.blocks[0].attn
+    device = attention.W_Q.device
+    generator = torch.Generator(device=device).manual_seed(20260809)
+    sample = torch.randn(
+        1,
+        33,
+        int(model.cfg.n_heads),
+        int(model.cfg.d_model),
+        device=device,
+        dtype=attention.W_Q.dtype,
+        generator=generator,
+    )
+    weight = attention.W_Q
+    bias = attention.b_Q
+    reference = (sample.unsqueeze(-1) * weight[None, None]).sum(dim=-2) + bias
+    chunked = memory_efficient_complex_attn_linear(sample, weight, bias)
+    if not torch.equal(reference, chunked):
+        difference = (reference.float() - chunked.float()).abs().max().item()
+        raise RuntimeError(
+            "Chunked split-QKV projection is not bitwise reference-equivalent "
+            f"on {device}; max_abs_difference={difference}."
+        )
+
+
+def install_memory_efficient_split_qkv_projection() -> None:
+    """Replace TransformerLens' broadcast split-QKV contraction in-place.
+
+    TransformerLens imports the helper into the component modules, so those
+    bound module globals must be replaced as well as the utility definition.
+    This changes only the contraction implementation, not model weights,
+    hooks, grouped-query expansion, or circuit intervention semantics.
+    """
+    from transformer_lens.components import abstract_attention
+    from transformer_lens.components import grouped_query_attention
+    from transformer_lens.utilities import attention
+
+    attention.complex_attn_linear = memory_efficient_complex_attn_linear
+    abstract_attention.complex_attn_linear = memory_efficient_complex_attn_linear
+    grouped_query_attention.complex_attn_linear = (
+        memory_efficient_complex_attn_linear
+    )
+
+
 def load_model(
     model_name: str = DEFAULT_MODEL_NAME,
     *,

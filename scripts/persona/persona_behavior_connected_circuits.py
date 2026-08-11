@@ -203,6 +203,11 @@ def main() -> None:
     set_selected_edges(
         downstream_graph, load_circuit_edge_names(downstream_circuit_path)
     )
+    if not model.cfg.use_attn_result:
+        raise RuntimeError(
+            "Connected-circuit evaluation requires TransformerLens' reference "
+            "per-head attention results."
+        )
 
     # Use the trait-specific unit vector so the connected-circuit test is trait-agnostic.
     unit_path = result_root / f"vector/{trait_slug}_direction.pt"
@@ -247,6 +252,28 @@ def main() -> None:
             tokenize=False,
             add_generation_prompt=True,
         )
+        positive_ids = model.tokenizer.encode(
+            positive_prompt, add_special_tokens=False
+        )
+        negative_system = make_system_prompt(
+            config["trait"]["negative_assistant_name"], instruction["neg"]
+        )
+        negative_prompt_candidate = model.tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": negative_system},
+                {"role": "user", "content": questions[question_index]},
+            ],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        negative_ids = model.tokenizer.encode(
+            negative_prompt_candidate, add_special_tokens=False
+        )
+        # Connected-circuit validation uses the same token-alignment rule so
+        # the method stays identical while incompatible prompt pairs are
+        # dropped before attribution.
+        if len(negative_ids) > len(positive_ids):
+            continue
         negative_prompt, alignment = _align_negative_prompt(
             model.tokenizer,
             question=questions[question_index],
@@ -515,6 +542,12 @@ def main() -> None:
                     "max_new_tokens": args.max_new_tokens,
                 },
                 "responses": len(rows),
+                "memory_implementation": {
+                    "attention_result_sources": (
+                        "TransformerLens hook_result reference path"
+                    ),
+                    "split_qkv_projection": "pinned TransformerLens default",
+                },
                 "expected_responses": len(designed),
                 "peak_cuda_memory_bytes": (
                     int(torch.cuda.max_memory_allocated())
@@ -608,7 +641,12 @@ def main() -> None:
                     logits = model(
                         clean_tokens, attention_mask=clean_mask
                     ).detach()
-            next_token = int(logits[0, -1].argmax().item())
+            next_token_logits = logits[0, -1]
+            if not torch.isfinite(next_token_logits).all():
+                raise FloatingPointError(
+                    "Non-finite next-token logits during connected-circuit generation."
+                )
+            next_token = int(next_token_logits.argmax().item())
             del logits
             generated.append(next_token)
             appended = torch.tensor(

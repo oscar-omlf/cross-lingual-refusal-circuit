@@ -170,6 +170,27 @@ def main() -> None:
             tokenize=False,
             add_generation_prompt=True,
         )
+        positive_ids = model.tokenizer.encode(
+            positive_prompt, add_special_tokens=False
+        )
+        negative_system = make_system_prompt(
+            config["trait"]["negative_assistant_name"], instruction["neg"]
+        )
+        negative_prompt = model.tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": negative_system},
+                {"role": "user", "content": questions[question_index]},
+            ],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        negative_ids = model.tokenizer.encode(
+            negative_prompt, add_special_tokens=False
+        )
+        # Preserve the original free-generation validation while skipping
+        # prompt pairs that cannot satisfy the same token-alignment gate.
+        if len(negative_ids) > len(positive_ids):
+            continue
         aligned_negative_prompt, alignment = _align_negative_prompt(
             model.tokenizer,
             question=questions[question_index],
@@ -445,6 +466,21 @@ def main() -> None:
             clean_tokens, clean_mask = tokenize_prompts(
                 model, [source["prompt"]], max_length=args.max_length
             )
+            positive_ids = model.tokenizer.encode(
+                source["prompt"], add_special_tokens=False
+            )
+            negative_prompt = _align_negative_prompt(
+                model.tokenizer,
+                question=source["question"],
+                negative_assistant_name=config["trait"]["negative_assistant_name"],
+                negative_instruction=instructions[source["instruction_index"]]["neg"],
+                positive_prompt=source["prompt"],
+            )[0]
+            negative_ids = model.tokenizer.encode(
+                negative_prompt, add_special_tokens=False
+            )
+            if len(negative_ids) > len(positive_ids):
+                continue
             corrupt_prompt = _align_negative_prompt(
                 model.tokenizer,
                 question=source["question"],

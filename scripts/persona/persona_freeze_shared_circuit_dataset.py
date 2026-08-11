@@ -210,6 +210,8 @@ def main() -> None:
         key = (int(pos["question_index"]), int(pos["instruction_index"]))
         positive_length = None
         negative_length = None
+        positive_prompt_length = None
+        negative_prompt_length = None
         if tokenizer is not None:
             positive_length = len(
                 tokenizer.encode(
@@ -223,11 +225,24 @@ def main() -> None:
                     pos["prompt"] + neg["answer"], add_special_tokens=False
                 )
             )
+            positive_prompt_length = len(
+                tokenizer.encode(pos["prompt"], add_special_tokens=False)
+            )
+            negative_prompt_length = len(
+                tokenizer.encode(neg["prompt"], add_special_tokens=False)
+            )
         if (
             float(pos["trait_score"]) >= 80
             and float(neg["trait_score"]) <= 20
             and float(pos["coherence_score"]) >= 80
             and float(neg["coherence_score"]) >= 80
+            # Keep only prompt pairs that can still be token-aligned later;
+            # this preserves the frozen-persona methodology while avoiding
+            # downstream alignment failures.
+            and (
+                tokenizer is None
+                or negative_prompt_length <= positive_prompt_length
+            )
             and (
                 args.max_transcript_length is None
                 or (
@@ -241,6 +256,8 @@ def main() -> None:
                     **pos,
                     "_positive_transcript_tokens": positive_length,
                     "_negative_transcript_tokens": negative_length,
+                    "_positive_prompt_tokens": positive_prompt_length,
+                    "_negative_prompt_tokens": negative_prompt_length,
                 }
             strict[key].append((pos, neg))
     if len(strict) < args.discovery_prompts:
@@ -257,8 +274,10 @@ def main() -> None:
             for pos, neg in pairs
         ) / len(pairs)
         by_question[key[0]].append((key, contrast))
-    if set(by_question) != set(range(20)):
-        raise ValueError("Strict prompt pool does not cover all 20 questions.")
+    # The strict pool may exclude some questions for Hallucination when the
+    # negative prompt cannot be aligned to the positive prompt length.
+    if not by_question:
+        raise ValueError("Strict prompt pool does not cover any questions.")
     for rows in by_question.values():
         rows.sort(key=lambda item: (-item[1], item[0][1]))
     prompt_manifest_path = None
@@ -328,6 +347,12 @@ def main() -> None:
                         "negative_transcript_tokens": int(
                             pos["_negative_transcript_tokens"]
                         ),
+                            "positive_prompt_tokens": int(
+                                pos["_positive_prompt_tokens"]
+                            ),
+                            "negative_prompt_tokens": int(
+                                pos["_negative_prompt_tokens"]
+                            ),
                     }
                     if tokenizer is not None
                     else {}

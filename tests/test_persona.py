@@ -14,9 +14,11 @@ from refusal_circuit.eapig import (
 )
 from refusal_circuit.circuit import (
     _construction_hooks,
+    _source_cache_hooks,
     _sparse_circuit_only_construction_hooks,
 )
 from refusal_circuit.graph import make_steering_to_logits_graph
+from refusal_circuit.model import memory_efficient_complex_attn_linear
 from refusal_circuit.persona import (
     COHERENCE_PROMPT,
     aggregate_numeric_logprobs,
@@ -219,6 +221,70 @@ class PersonaProtocolTests(unittest.TestCase):
                 sparse = hook(sparse, None)
 
         self.assertTrue(torch.allclose(sparse, dense, atol=1e-6, rtol=0))
+
+    def test_attention_source_cache_uses_reference_head_results(self):
+        """Attention sources must come from TransformerLens hook_result."""
+        import torch
+        from eap.graph import Graph
+
+        graph = Graph.from_model(
+            {"n_layers": 1, "n_heads": 2, "parallel_attn_mlp": False}
+        )
+        for node in graph.nodes.values():
+            node.in_graph = False
+        for edge in graph.edges.values():
+            edge.in_graph = False
+        selected = graph.edges["a0.h0->m0"]
+        selected.in_graph = True
+        selected.parent.in_graph = True
+        selected.child.in_graph = True
+
+        cache = {}
+        hooks = _source_cache_hooks(
+            SimpleNamespace(),
+            graph,
+            cache,
+            selected_only=True,
+        )
+        hook_names = [name for name, _ in hooks]
+        self.assertEqual(
+            hook_names,
+            ["blocks.0.attn.hook_result", "blocks.0.hook_attn_out"],
+        )
+        self.assertNotIn("blocks.0.attn.hook_z", hook_names)
+
+        generator = torch.Generator().manual_seed(11)
+        result = torch.randn(1, 4, 2, 5, generator=generator)
+        bias = torch.randn(1, 4, 5, generator=generator)
+        hook_map = dict(hooks)
+        hook_map["blocks.0.attn.hook_result"](result, None)
+        hook_map["blocks.0.hook_attn_out"](result.sum(dim=2) + bias, None)
+        self.assertIn("blocks.0.attn.hook_result", cache)
+
+    def test_memory_efficient_split_qkv_matches_broadcast_definition(self):
+        """The A100-safe contraction must preserve split-head QKV values."""
+        import torch
+
+        generator = torch.Generator().manual_seed(29)
+        inputs = torch.randn(2, 5, 3, 7, generator=generator, dtype=torch.float64)
+        weights = torch.randn(3, 7, 4, generator=generator, dtype=torch.float64)
+        bias = torch.randn(3, 4, generator=generator, dtype=torch.float64)
+        broadcast = (inputs.unsqueeze(-1) * weights[None, None]).sum(dim=-2) + bias
+        efficient = memory_efficient_complex_attn_linear(
+            inputs, weights, bias, position_chunk_size=2
+        )
+        self.assertTrue(torch.equal(efficient, broadcast))
+
+        bf16_inputs = inputs.to(torch.bfloat16)
+        bf16_weights = weights.to(torch.bfloat16)
+        bf16_bias = bias.to(torch.bfloat16)
+        bf16_broadcast = (
+            bf16_inputs.unsqueeze(-1) * bf16_weights[None, None]
+        ).sum(dim=-2) + bf16_bias
+        bf16_efficient = memory_efficient_complex_attn_linear(
+            bf16_inputs, bf16_weights, bf16_bias, position_chunk_size=2
+        )
+        self.assertTrue(torch.equal(bf16_efficient, bf16_broadcast))
 
     def test_frozen_upstream_implementation_contract(self):
         root = Path(__file__).resolve().parents[1]
