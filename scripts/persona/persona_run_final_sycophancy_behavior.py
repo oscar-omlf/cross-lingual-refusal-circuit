@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Run only the missing GPU cells in the final Qwen sycophancy behavior suite.
+"""Run missing cells in the historical cut-set sycophancy behavior suite.
 
-The discovery rankings and internal evaluations are immutable inputs. This
-orchestrator deliberately does not extract vectors, rank edges, or rerun
-completed behavioral records. Every underlying generator checkpoints one JSONL
-row per completed answer and supports safe resume after scheduler interruption.
+This orchestrator predates the source-to-sink methodology correction. It is
+retained only for explicit legacy diagnostics and must not be used to produce
+the primary circuit claim.
 """
 
 from __future__ import annotations
@@ -147,7 +146,18 @@ def main() -> None:
         required=True,
         choices=("upstream-extensions", "downstream-curve", "selected-union"),
     )
+    parser.add_argument(
+        "--allow-legacy-cut-set-diagnostics",
+        action="store_true",
+        help="Acknowledge that these jobs use historical cut-set artifacts.",
+    )
     args = parser.parse_args()
+    if not args.allow_legacy_cut_set_diagnostics:
+        raise RuntimeError(
+            "Historical orchestrator disabled by default. Follow "
+            "PERSONA_CIRCUIT_METHOD_REPAIR.md, or pass the explicit legacy "
+            "acknowledgement only for a cut-set diagnostic."
+        )
     {
         "upstream-extensions": upstream_extensions,
         "downstream-curve": downstream_curve,

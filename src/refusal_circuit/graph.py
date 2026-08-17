@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import heapq
-import itertools
 from pathlib import Path
 
 from .paths import ensure_parent, write_json
@@ -168,7 +167,154 @@ def edge_record(edge) -> dict:
 
 
 def sorted_edges(graph) -> list:
-    return sorted(graph.edges.values(), key=lambda edge: abs(float(edge.score)), reverse=True)
+    return sorted(
+        graph.edges.values(),
+        key=lambda edge: (-abs(float(edge.score)), edge.name),
+    )
+
+
+def circuit_connectivity(graph, edge_names: set[str] | None = None) -> dict:
+    """Return source/sink reachability diagnostics for a selected edge set."""
+
+    selected = (
+        {edge.name for edge in graph.edges.values() if edge.in_graph}
+        if edge_names is None
+        else set(edge_names)
+    )
+    unknown = selected - set(graph.edges)
+    if unknown:
+        raise ValueError(
+            f"Connectivity audit contains unknown edges: {sorted(unknown)[:3]}"
+        )
+
+    outgoing: dict[str, list] = {}
+    incoming: dict[str, list] = {}
+    selected_nodes: set[str] = set()
+    for name in selected:
+        edge = graph.edges[name]
+        outgoing.setdefault(edge.parent.name, []).append(edge)
+        incoming.setdefault(edge.child.name, []).append(edge)
+        selected_nodes.update((edge.parent.name, edge.child.name))
+
+    source_reachable = {"input"}
+    frontier = ["input"]
+    while frontier:
+        parent = frontier.pop()
+        for edge in outgoing.get(parent, ()):
+            child = edge.child.name
+            if child not in source_reachable:
+                source_reachable.add(child)
+                frontier.append(child)
+
+    sink_reachable = {"logits"}
+    frontier = ["logits"]
+    while frontier:
+        child = frontier.pop()
+        for edge in incoming.get(child, ()):
+            parent = edge.parent.name
+            if parent not in sink_reachable:
+                sink_reachable.add(parent)
+                frontier.append(parent)
+
+    source_reachable_edges = {
+        name for name in selected if graph.edges[name].parent.name in source_reachable
+    }
+    sink_reachable_edges = {
+        name for name in selected if graph.edges[name].child.name in sink_reachable
+    }
+    complete_path_edges = source_reachable_edges & sink_reachable_edges
+    has_path = "logits" in source_reachable
+    return {
+        "selected_edges": len(selected),
+        "selected_nodes": len(selected_nodes),
+        "source_reachable_nodes": len(source_reachable & selected_nodes),
+        "sink_reachable_nodes": len(sink_reachable & selected_nodes),
+        "source_reachable_edges": len(source_reachable_edges),
+        "sink_reachable_edges": len(sink_reachable_edges),
+        "complete_path_edges": len(complete_path_edges),
+        "source_disconnected_edges": len(selected - source_reachable_edges),
+        "sink_disconnected_edges": len(selected - sink_reachable_edges),
+        "off_path_edges": len(selected - complete_path_edges),
+        "has_source_to_sink_path": has_path,
+        "all_edges_on_source_to_sink_paths": bool(selected)
+        and has_path
+        and selected == complete_path_edges,
+    }
+
+
+def validate_intervention_connectivity(
+    connectivities: dict[str, dict],
+    *,
+    require_source_to_sink: bool,
+) -> None:
+    """Validate edge sets for causal interception or reconstruction."""
+
+    for scope, connectivity in connectivities.items():
+        if connectivity["selected_edges"] <= 0:
+            raise ValueError(f"The {scope} intervention set is empty.")
+        if connectivity["sink_disconnected_edges"] != 0:
+            raise ValueError(
+                f"The {scope} intervention contains edges disconnected from "
+                "its measured endpoint."
+            )
+        if (
+            require_source_to_sink
+            and not connectivity["all_edges_on_source_to_sink_paths"]
+        ):
+            raise ValueError(
+                f"The {scope} reconstruction is not a complete source-to-sink "
+                "circuit. Causal cut sets remain valid only for ablation and "
+                "mediation tests."
+            )
+
+
+def _prune_selected_edges(graph, *, require_source: bool) -> None:
+    """Prune selected edges to sink paths or complete input-to-sink paths."""
+
+    selected = {edge.name for edge in graph.edges.values() if edge.in_graph}
+    outgoing: dict[str, list] = {}
+    incoming: dict[str, list] = {}
+    for name in selected:
+        edge = graph.edges[name]
+        outgoing.setdefault(edge.parent.name, []).append(edge)
+        incoming.setdefault(edge.child.name, []).append(edge)
+
+    sink_reachable = {"logits"}
+    frontier = ["logits"]
+    while frontier:
+        child = frontier.pop()
+        for edge in incoming.get(child, ()):
+            parent = edge.parent.name
+            if parent not in sink_reachable:
+                sink_reachable.add(parent)
+                frontier.append(parent)
+
+    retained = {
+        name for name in selected if graph.edges[name].child.name in sink_reachable
+    }
+    if require_source:
+        source_reachable = {"input"}
+        frontier = ["input"]
+        while frontier:
+            parent = frontier.pop()
+            for edge in outgoing.get(parent, ()):
+                child = edge.child.name
+                if child not in source_reachable:
+                    source_reachable.add(child)
+                    frontier.append(child)
+        retained = {
+            name
+            for name in retained
+            if graph.edges[name].parent.name in source_reachable
+        }
+
+    for node in graph.nodes.values():
+        node.in_graph = False
+    for edge in graph.edges.values():
+        edge.in_graph = edge.name in retained
+        if edge.in_graph:
+            edge.parent.in_graph = True
+            edge.child.in_graph = True
 
 
 def paper_greedy_edges(graph, requested_k: int, *, prune_parentless: bool = True) -> list:
@@ -182,6 +328,7 @@ def paper_greedy_edges(graph, requested_k: int, *, prune_parentless: bool = True
     """
     if requested_k <= 0:
         raise ValueError(f"requested_k must be positive, got {requested_k}.")
+    original_requested_k = requested_k
     for node in graph.nodes.values():
         node.in_graph = False
     for edge in graph.edges.values():
@@ -194,15 +341,14 @@ def paper_greedy_edges(graph, requested_k: int, *, prune_parentless: bool = True
     # attribution work has already succeeded.  Keep the paper's frontier rule
     # -- repeatedly add the largest absolute-score edge whose child is already
     # in the circuit -- but implement it iteratively.
-    counter = itertools.count()
     frontier = [
-        (-abs(float(edge.score)), next(counter), edge)
+        (-abs(float(edge.score)), edge.name, edge)
         for edge in graph.nodes["logits"].parent_edges
     ]
     heapq.heapify(frontier)
     seen: set[str] = set()
     while requested_k > 0 and frontier:
-        _neg_score, _index, edge = heapq.heappop(frontier)
+        _neg_score, _name, edge = heapq.heappop(frontier)
         if edge.name in seen:
             continue
         seen.add(edge.name)
@@ -216,10 +362,35 @@ def paper_greedy_edges(graph, requested_k: int, *, prune_parentless: bool = True
                 if parent_edge.name not in seen and not parent_edge.in_graph:
                     heapq.heappush(
                         frontier,
-                        (-abs(float(parent_edge.score)), next(counter), parent_edge),
+                        (
+                            -abs(float(parent_edge.score)),
+                            parent_edge.name,
+                            parent_edge,
+                        ),
                     )
-    graph.prune_dead_nodes(prune_childless=True, prune_parentless=prune_parentless)
-    return [edge for edge in graph.edges.values() if edge.in_graph]
+    frontier_selected = {edge.name for edge in graph.edges.values() if edge.in_graph}
+    pre_pruning = circuit_connectivity(graph, frontier_selected)
+    _prune_selected_edges(graph, require_source=prune_parentless)
+    selected = [edge for edge in graph.edges.values() if edge.in_graph]
+    post_pruning = circuit_connectivity(
+        graph, {edge.name for edge in selected}
+    )
+    graph.last_selection_diagnostics = {
+        "requested_frontier_edges": original_requested_k,
+        "frontier_selected_edges": len(frontier_selected),
+        "pruning": (
+            "complete_source_to_sink_paths"
+            if prune_parentless
+            else "sink_paths_only"
+        ),
+        "before_pruning": pre_pruning,
+        "after_pruning": post_pruning,
+    }
+    if prune_parentless and selected and not post_pruning[
+        "all_edges_on_source_to_sink_paths"
+    ]:
+        raise RuntimeError("Source-to-sink circuit pruning left an off-path edge.")
+    return selected
 
 
 def write_edge_scores_parquet(graph, path: Path) -> None:
@@ -245,7 +416,15 @@ def write_edge_scores_parquet(graph, path: Path) -> None:
             }
         )
     ensure_parent(path)
-    pd.DataFrame(rows).sort_values("abs_score", ascending=False).to_parquet(path, index=False)
+    (
+        pd.DataFrame(rows)
+        .sort_values(
+            ["abs_score", "name"],
+            ascending=[False, True],
+            kind="mergesort",
+        )
+        .to_parquet(path, index=False)
+    )
 
 
 def write_circuit_jsons(
@@ -361,11 +540,13 @@ def load_circuit_edge_names(path: Path) -> set[str]:
 
 
 def set_selected_edges(graph, edge_names: set[str]) -> None:
-    """Mark a raw top-k edge set without connectivity pruning.
+    """Mark an already selected edge set without changing its connectivity.
 
     Evaluation patches *every* non-selected edge at every receiving node, so a
-    disconnected top-k set remains well-defined.  The terminal metric node is
-    always enabled to ensure its incoming residual edges are patched too.
+    disconnected cut set remains algebraically well-defined for diagnostics.
+    Circuit-only claims should separately require ``circuit_connectivity`` to
+    confirm complete source-to-sink paths. The terminal metric node is always
+    enabled to ensure its incoming residual edges are patched too.
     """
     unknown = edge_names - set(graph.edges)
     if unknown:

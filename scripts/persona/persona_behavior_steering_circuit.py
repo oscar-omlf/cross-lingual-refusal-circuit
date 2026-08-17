@@ -55,17 +55,23 @@ def main() -> None:
 
     from refusal_circuit.circuit import mixed_logits_with_intervention
     from refusal_circuit.graph import (
+        circuit_connectivity,
         load_circuit_edge_names,
         make_steering_to_logits_graph,
         set_selected_edges,
     )
     from refusal_circuit.interventions import activation_addition_hook
-    from refusal_circuit.model import load_model, tokenize_prompts
+    from refusal_circuit.model import (
+        load_model,
+        tokenize_prompts,
+        validate_model_architecture,
+    )
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import (
         make_system_prompt,
         read_jsonl,
         sha256_file,
+        token_ids_sha256,
         write_jsonl,
     )
 
@@ -76,6 +82,10 @@ def main() -> None:
     discovery = result_root / "circuit_discovery_steering_path" / args.run_name
     discovery_meta_path = discovery / "eapig_run_metadata.json"
     discovery_meta = json.loads(discovery_meta_path.read_text(encoding="utf-8"))
+    if discovery_meta.get("status") != "complete":
+        raise ValueError("Discovery run is not complete.")
+    if discovery_meta.get("model") != config["model"]:
+        raise ValueError("Discovery and behavior model configurations differ.")
     corrupt_coefficient = float(
         discovery_meta["steering"]["corrupt_coefficient"]
     )
@@ -83,7 +93,7 @@ def main() -> None:
         args.circuit_path
         if args.circuit_path is not None
         else discovery
-        / "circuits_nested"
+        / "circuits_source_to_sink"
         / f"steering_path_eapig_top_{args.k}.json"
     )
     circuit_path = circuit_path if circuit_path.is_absolute() else ROOT / circuit_path
@@ -144,6 +154,9 @@ def main() -> None:
         dtype=args.dtype,
         revision=model_cfg.get("revision"),
     )
+    observed_architecture = validate_model_architecture(
+        model, config["model_architecture"]
+    )
     for row in designed:
         row["prompt"] = model.tokenizer.apply_chat_template(
             [
@@ -153,7 +166,27 @@ def main() -> None:
             tokenize=False,
             add_generation_prompt=True,
         )
+        prompt_length = len(
+            model.tokenizer.encode(
+                row["prompt"], add_special_tokens=False
+            )
+        )
+        if prompt_length > args.max_length:
+            raise ValueError(
+                f"Question {row['question_index']} exceeds --max-length; "
+                "refusing to truncate a downstream behavioral prompt."
+            )
     vector_path = result_root / f"vector/{trait_slug}_response_avg_diff.pt"
+    vector_sha256 = sha256_file(vector_path)
+    if (
+        discovery_meta.get("steering", {}).get("vector")
+        != str(vector_path.relative_to(ROOT))
+        or discovery_meta.get("steering", {}).get("vector_sha256")
+        != vector_sha256
+    ):
+        raise ValueError(
+            "Behavior evaluation response vector differs from discovery."
+        )
     vector_stack = torch.load(
         vector_path, map_location=next(model.parameters()).device, weights_only=True
     )
@@ -161,25 +194,100 @@ def main() -> None:
     raw_direction = vector_stack[layer] if vector_stack.ndim == 2 else vector_stack
     target_hook = config["vector"]["transformer_lens_target_hook"]
     graph = make_steering_to_logits_graph(model, layer)
-    set_selected_edges(graph, load_circuit_edge_names(circuit_path))
     edge_names = load_circuit_edge_names(circuit_path)
+    connectivity = circuit_connectivity(graph, edge_names)
+    if (
+        "circuit_only" in args.conditions
+        and not connectivity["all_edges_on_source_to_sink_paths"]
+    ):
+        raise ValueError(
+            "Circuit-only generation requires an interface-to-logit circuit. "
+            "Use a rebuilt circuits_source_to_sink artifact."
+        )
+    set_selected_edges(graph, edge_names)
+    model.set_ungroup_grouped_query_attention(True)
+    if not model.cfg.use_attn_result:
+        raise RuntimeError(
+            "Downstream behavior evaluation requires TransformerLens' "
+            "reference per-head attention results."
+        )
     existing_rows = read_jsonl(raw_path) if raw_path.exists() else []
     rows_by_id = {row["record_id"]: row for row in existing_rows}
     if len(rows_by_id) != len(existing_rows):
         raise ValueError("Duplicate behavioral record IDs.")
+    expected_resume = {
+        "behavior_protocol_id": config["protocol_id"],
+        "model": model_cfg,
+        "model_architecture": observed_architecture,
+        "discovery_metadata_sha256": sha256_file(discovery_meta_path),
+        "circuit_sha256": sha256_file(circuit_path),
+        "response_vector_sha256": vector_sha256,
+        "requested_k": args.k,
+        "question_indices": args.question_indices,
+        "conditions": list(args.conditions),
+        "decoding": {
+            "do_sample": False,
+            "max_new_tokens": args.max_new_tokens,
+            "backend": "full_prefix_forward_ungrouped_gqa",
+        },
+        "max_length": args.max_length,
+    }
+    if args.resume:
+        if not metadata_path.exists():
+            raise ValueError("Cannot resume without the original metadata.json.")
+        previous_metadata = json.loads(
+            metadata_path.read_text(encoding="utf-8")
+        )
+        mismatched = [
+            key
+            for key, value in expected_resume.items()
+            if previous_metadata.get(key) != value
+        ]
+        if mismatched:
+            raise ValueError(
+                f"Resume arguments differ from the original run: {mismatched}"
+            )
+    expected_ids = {
+        f"steering-circuit-{args.run_name}-k{args.k}-{condition}-q{question:02d}"
+        for condition in args.conditions
+        for question in args.question_indices
+    }
+    unexpected_ids = set(rows_by_id) - expected_ids
+    if unexpected_ids:
+        raise ValueError(
+            f"Resume artifact contains unexpected records: {sorted(unexpected_ids)[:3]}"
+        )
 
-    # The normal greedy answer is independent of both the circuit and k.  Reuse
-    # the already frozen answer on these exact prompts instead of spending GPU
-    # time regenerating an identical baseline for every point in the size sweep.
+    # Reuse a normal row only when it came from the identical full-prefix
+    # backend. Historical KV-cache baselines are intentionally regenerated.
     baseline_path = args.baseline_responses or (
         intermediate / "behavioral_pilot/k3000_n20/responses.jsonl"
     )
     baseline_path = baseline_path if baseline_path.is_absolute() else ROOT / baseline_path
     baseline_scored_path = baseline_path.with_name("scored.jsonl")
+    baseline_metadata_path = baseline_path.with_name("metadata.json")
+    baseline_metadata = (
+        json.loads(baseline_metadata_path.read_text(encoding="utf-8"))
+        if baseline_metadata_path.exists()
+        else {}
+    )
+    baseline_compatible = (
+        baseline_metadata.get("status") == "complete"
+        and baseline_metadata.get("model") == model_cfg
+        and baseline_metadata.get("model_architecture")
+        == observed_architecture
+        and baseline_metadata.get("decoding", {}).get("backend")
+        == "full_prefix_forward_ungrouped_gqa"
+    )
     baseline = {
         int(row["question_index"]): row
-        for row in (read_jsonl(baseline_path) if baseline_path.exists() else [])
+        for row in (
+            read_jsonl(baseline_path)
+            if baseline_path.exists() and baseline_compatible
+            else []
+        )
         if row["condition"] == "normal"
+        and row.get("generated_token_ids_sha256")
     }
     for source in designed if "normal" in args.conditions else []:
         record_id = (
@@ -222,6 +330,7 @@ def main() -> None:
             "behavior_protocol_id": config["protocol_id"],
             "claim_scope": "free-generation causal circuit validation",
             "model": model_cfg,
+            "model_architecture": observed_architecture,
             "trait": config["trait"],
             "eval_artifact": str(official.relative_to(ROOT)),
             "eval_artifact_sha256": sha256_file(official),
@@ -229,12 +338,21 @@ def main() -> None:
             "discovery_metadata_sha256": sha256_file(discovery_meta_path),
             "circuit": str(circuit_path.relative_to(ROOT)),
             "circuit_sha256": sha256_file(circuit_path),
+            "response_vector": str(vector_path.relative_to(ROOT)),
+            "response_vector_sha256": vector_sha256,
             "requested_k": args.k,
             "retained_edges": len(edge_names),
+            "connectivity": connectivity,
             "question_indices": args.question_indices,
             "conditions": list(args.conditions),
             "corrupt_coefficient": corrupt_coefficient,
-            "decoding": {"do_sample": False, "max_new_tokens": args.max_new_tokens},
+            "decoding": {
+                "do_sample": False,
+                "max_new_tokens": args.max_new_tokens,
+                "backend": "full_prefix_forward_ungrouped_gqa",
+            },
+            "generation_backend": "full_prefix_forward_ungrouped_gqa",
+            "max_length": args.max_length,
             "checkpointing": "one JSONL append per completed response",
             "reused_normal": (
                 str(baseline_path.relative_to(ROOT)) if baseline else None
@@ -278,8 +396,11 @@ def main() -> None:
             "model_revision": model_cfg.get("revision"),
             "condition": condition,
             "requested_k": args.k,
+            "retained_edges": len(edge_names),
             "answer": model.tokenizer.decode(token_ids, skip_special_tokens=True),
             "generated_token_count": len(token_ids),
+            "generated_token_ids": token_ids,
+            "generated_token_ids_sha256": token_ids_sha256(token_ids),
             "hit_max_new_tokens": len(token_ids) >= args.max_new_tokens,
             "decoding": "greedy",
             "corrupt_coefficient": corrupt_coefficient,
@@ -287,6 +408,36 @@ def main() -> None:
         write_jsonl(raw_path, [row], mode="a")
         rows_by_id[record_id] = row
         save_metadata("running")
+
+    def plain_full_prefix_generation(
+        tokens,
+        *,
+        fwd_hooks=(),
+    ) -> list[int]:
+        generated: list[int] = []
+        eos_id = model.tokenizer.eos_token_id
+        for _ in range(args.max_new_tokens):
+            with torch.inference_mode(), model.hooks(
+                fwd_hooks=list(fwd_hooks)
+            ):
+                logits = model(tokens).detach()
+            next_token = int(logits[0, -1].argmax().item())
+            del logits
+            generated.append(next_token)
+            tokens = torch.cat(
+                [
+                    tokens,
+                    torch.tensor(
+                        [[next_token]],
+                        device=tokens.device,
+                        dtype=tokens.dtype,
+                    ),
+                ],
+                dim=1,
+            )
+            if eos_id is not None and next_token == eos_id:
+                break
+        return generated
 
     save_metadata("running")
     for condition in args.conditions:
@@ -301,36 +452,24 @@ def main() -> None:
                 model, [source["prompt"]], max_length=args.max_length
             )
             if condition in {"normal", "negative_steered"}:
-                model.set_ungroup_grouped_query_attention(False)
-                try:
-                    hooks = []
-                    if condition == "negative_steered":
-                        hooks = [
-                            (
-                                target_hook,
-                                activation_addition_hook(
-                                    raw_direction,
-                                    coefficient=corrupt_coefficient,
-                                    position=-1,
-                                ),
-                            )
-                        ]
-                    with model.hooks(fwd_hooks=hooks):
-                        generated = model.generate(
-                            prompt_tokens,
-                            max_new_tokens=args.max_new_tokens,
-                            stop_at_eos=True,
-                            do_sample=False,
-                            use_past_kv_cache=True,
-                            return_type="tokens",
-                            verbose=False,
+                hooks = []
+                if condition == "negative_steered":
+                    hooks = [
+                        (
+                            target_hook,
+                            activation_addition_hook(
+                                raw_direction,
+                                coefficient=corrupt_coefficient,
+                                position=-1,
+                            ),
                         )
-                finally:
-                    model.set_ungroup_grouped_query_attention(True)
+                    ]
                 append(
                     source,
                     condition,
-                    generated[0, prompt_tokens.shape[1] :].tolist(),
+                    plain_full_prefix_generation(
+                        prompt_tokens, fwd_hooks=hooks
+                    ),
                 )
                 continue
 

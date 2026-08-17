@@ -89,13 +89,14 @@ def main() -> None:
         attribute_steering_response_logprob,
     )
     from refusal_circuit.graph import (
+        circuit_connectivity,
         edge_record,
         make_steering_to_logits_graph,
         paper_greedy_edges,
         write_edge_scores_parquet,
         write_top_edges_summary,
     )
-    from refusal_circuit.model import load_model
+    from refusal_circuit.model import load_model, validate_model_architecture
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import read_jsonl, sha256_file
 
@@ -177,6 +178,11 @@ def main() -> None:
                 set(args.manifest_sample_indices)
             ):
                 raise ValueError("Manifest sample indices must be unique.")
+            if any(
+                index < 0 or index >= len(samples)
+                for index in args.manifest_sample_indices
+            ):
+                raise IndexError("Manifest sample index is out of range.")
             samples = [samples[index] for index in args.manifest_sample_indices]
         if len(samples) != args.num_prompts:
             raise ValueError(
@@ -216,6 +222,9 @@ def main() -> None:
         dtype=args.dtype,
         revision=model_cfg.get("revision"),
     )
+    observed_architecture = validate_model_architecture(
+        model, config["model_architecture"]
+    )
     vector_path = vector_root / f"{trait_slug}_response_avg_diff.pt"
     vector_stack = torch.load(
         vector_path, map_location=next(model.parameters()).device, weights_only=True
@@ -235,12 +244,18 @@ def main() -> None:
             model.tokenizer.encode(row["prompt"], add_special_tokens=False)
         )
         positive_text = row["prompt"] + row["answer"]
-        positive_used_length = min(
-            len(model.tokenizer.encode(positive_text, add_special_tokens=False)),
-            args.max_length,
+        positive_used_length = len(
+            model.tokenizer.encode(
+                positive_text, add_special_tokens=False
+            )
         )
+        if positive_used_length > args.max_length:
+            raise ValueError(
+                f"Transcript {row['record_id']} exceeds --max-length; refusing "
+                "to truncate the response-logprob estimand."
+            )
         if response_start >= positive_used_length:
-            raise ValueError(f"Truncation removed response for {row['record_id']}")
+            raise ValueError(f"Transcript has no response for {row['record_id']}")
         boundary = {
             "record_id": row["record_id"],
             "pair_id": row["pair_id"],
@@ -255,17 +270,20 @@ def main() -> None:
             # negative answer supplies content, not a different conditioning
             # context, so the metric is a genuine same-prompt preference.
             negative_text = row["prompt"] + negative["answer"]
-            negative_used_length = min(
-                len(
-                    model.tokenizer.encode(
-                        negative_text, add_special_tokens=False
-                    )
-                ),
-                args.max_length,
+            negative_used_length = len(
+                model.tokenizer.encode(
+                    negative_text, add_special_tokens=False
+                )
             )
+            if negative_used_length > args.max_length:
+                raise ValueError(
+                    f"Negative transcript {row['pair_id']} exceeds "
+                    "--max-length; refusing to truncate the response-logprob "
+                    "estimand."
+                )
             if response_start >= negative_used_length:
                 raise ValueError(
-                    f"Truncation removed negative response for {row['pair_id']}"
+                    f"Negative transcript has no response for {row['pair_id']}"
                 )
             transcript_pairs.append(
                 (
@@ -323,20 +341,31 @@ def main() -> None:
     )
 
     circuit_paths = []
-    circuit_root = output / "circuits_nested"
+    cut_paths = []
+    circuit_root = output / "circuits_source_to_sink"
+    cut_root = output / "circuits_cut_sets"
     for requested_k in args.k_values:
         selected_edges = paper_greedy_edges(
             graph,
             min(requested_k, len(graph.edges)),
-            prune_parentless=False,
+            prune_parentless=True,
         )
+        connected_diagnostics = graph.last_selection_diagnostics
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "method": "steering_path_eapig",
-            "selection": "paper_greedy_absolute_score_with_childless_pruning_only",
-            "claim_scope": "downstream mediator candidate; free-generation validation required",
+            "selection": "paper_greedy_absolute_score_with_recursive_source_sink_pruning",
+            "circuit_family": "source_to_sink",
+            "claim_scope": (
+                "downstream mediator circuit candidate with complete interface-to-logit "
+                "paths; free-generation validation required"
+            ),
             "requested_k": requested_k,
             "retained_edges": len(selected_edges),
+            "selection_diagnostics": connected_diagnostics,
+            "connectivity": circuit_connectivity(
+                graph, {edge.name for edge in selected_edges}
+            ),
             "score_source": str(score_path.relative_to(ROOT)),
             "corrupt_coefficient": args.corrupt_coefficient,
             "target": {
@@ -357,6 +386,30 @@ def main() -> None:
         write_json(path, payload)
         circuit_paths.append(path)
 
+        cut_edges = paper_greedy_edges(
+            graph,
+            min(requested_k, len(graph.edges)),
+            prune_parentless=False,
+        )
+        cut_payload = {
+            **payload,
+            "selection": "paper_greedy_absolute_score_with_sink_pruning_only",
+            "circuit_family": "causal_cut",
+            "claim_scope": (
+                "downstream causal interception set for necessity tests; "
+                "not a reconstructive interface-to-logit circuit"
+            ),
+            "retained_edges": len(cut_edges),
+            "selection_diagnostics": graph.last_selection_diagnostics,
+            "connectivity": circuit_connectivity(
+                graph, {edge.name for edge in cut_edges}
+            ),
+            "edges": [edge_record(edge) for edge in cut_edges],
+        }
+        cut_path = cut_root / f"steering_path_eapig_top_{requested_k}.json"
+        write_json(cut_path, cut_payload)
+        cut_paths.append(cut_path)
+
     metadata = {
         "schema_version": 1,
         "status": "complete",
@@ -367,6 +420,7 @@ def main() -> None:
             "on generation logits; generated behavior must be validated separately"
         ),
         "model": model_cfg,
+        "model_architecture": observed_architecture,
         "trait": trait_slug,
         "source": str(positive_path.relative_to(ROOT)),
         "source_sha256": sha256_file(positive_path),
@@ -420,8 +474,17 @@ def main() -> None:
             {
                 "path": str(path.relative_to(ROOT)),
                 "sha256": sha256_file(path),
+                "circuit_family": "source_to_sink",
             }
             for path in circuit_paths
+        ]
+        + [
+            {
+                "path": str(path.relative_to(ROOT)),
+                "sha256": sha256_file(path),
+                "circuit_family": "causal_cut",
+            }
+            for path in cut_paths
         ],
         "protected_projection_circuit": str(protected_old.relative_to(ROOT)),
     }

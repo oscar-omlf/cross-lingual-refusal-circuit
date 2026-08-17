@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Sequence
@@ -70,6 +72,59 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def token_ids_sha256(token_ids: Sequence[int]) -> str:
+    """Hash an exact generated-token sequence with a stable serialization."""
+
+    payload = json.dumps(
+        [int(token_id) for token_id in token_ids],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def behavioral_circuit_summary(
+    normal: Sequence[float],
+    negative: Sequence[float],
+    intervened: Sequence[float],
+    *,
+    regime: str,
+) -> dict[str, float]:
+    """Summarize behavioral necessity or sufficiency on a shared scale."""
+
+    if regime not in {"necessity", "sufficiency"}:
+        raise ValueError("regime must be 'necessity' or 'sufficiency'")
+    if not normal or len(normal) != len(negative) or len(normal) != len(intervened):
+        raise ValueError("Behavior arrays must be non-empty and equal length.")
+    arrays = [
+        [float(value) for value in values]
+        for values in (normal, negative, intervened)
+    ]
+    if not all(math.isfinite(value) for values in arrays for value in values):
+        raise ValueError("Behavior arrays must contain only finite values.")
+    normal_values, negative_values, intervened_values = arrays
+    normal_mean = statistics.fmean(normal_values)
+    negative_mean = statistics.fmean(negative_values)
+    intervened_mean = statistics.fmean(intervened_values)
+    denominator = normal_mean - negative_mean
+    if denominator <= 0:
+        raise ValueError(
+            "Normal behavior must exceed the negative-prompt baseline."
+        )
+    additive_effect = (
+        normal_mean - intervened_mean
+        if regime == "necessity"
+        else intervened_mean - negative_mean
+    )
+    return {
+        "normal_trait_mean": normal_mean,
+        "negative_trait_mean": negative_mean,
+        "intervened_trait_mean": intervened_mean,
+        "normal_minus_negative_points": denominator,
+        "additive_effect_points": additive_effect,
+        "normalized_effect": additive_effect / denominator,
+    }
 
 
 def indefinite_article(word: str) -> str:

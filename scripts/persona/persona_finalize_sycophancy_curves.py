@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Build paper-ready Qwen sycophancy circuit tables and figures.
+"""Build the historical cut-set Qwen sycophancy tables and figures.
 
-All behavioral inputs are explicit, complete, canonically judged, uncapped
-artifacts. Discovery and internal-evaluation artifacts are hashed into the
-manifest. No model or external API is used by this aggregation step.
+This script predates the source-to-sink methodology correction and is disabled
+by default. Use the repaired causal-curve and end-to-end analyzers for paper
+claims.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -29,6 +30,20 @@ OUTPUT = ROOT / "results/qwen2.5-7b-instruct/persona/sycophantic/paper_suite_fin
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--allow-legacy-cut-set-finalization",
+        action="store_true",
+        help="Acknowledge that the output is a historical cut-set diagnostic.",
+    )
+    args = parser.parse_args()
+    if not args.allow_legacy_cut_set_finalization:
+        raise RuntimeError(
+            "Historical finalizer disabled by default. Use "
+            "persona.analyze-causal-curves and "
+            "persona.analyze-end-to-end-curves instead."
+        )
+
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd

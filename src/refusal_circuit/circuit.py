@@ -238,8 +238,20 @@ def _sparse_circuit_only_construction_hooks(
     return hooks
 
 
-def _construction_hooks(graph, corrupt_cache, mixed_cache, *, patch_selected: bool):
-    """Patch either selected or unselected EAP edges at each receiving input."""
+def _construction_hooks(
+    graph,
+    corrupt_cache,
+    mixed_cache,
+    *,
+    patch_selected: bool,
+    position_mask: torch.Tensor | None = None,
+):
+    """Patch selected or unselected EAP edges at each receiving input.
+
+    ``position_mask`` restricts edge replacement to selected token positions.
+    It is used to keep prompt-formation interventions from also corrupting
+    response-token computation during autoregressive generation.
+    """
     from eap.graph import AttentionNode, InputNode, LogitNode, MLPNode
 
     hooks = []
@@ -258,10 +270,17 @@ def _construction_hooks(graph, corrupt_cache, mixed_cache, *, patch_selected: bo
                         continue
                     clean_source = mixed_cache[edge.parent.out_hook][edge.parent.index]
                     corrupt_source = corrupt_cache[edge.parent.out_hook][edge.parent.index]
+                    delta = corrupt_source.float() - clean_source.float()
+                    if position_mask is not None:
+                        mask = position_mask.to(
+                            device=delta.device, dtype=delta.dtype
+                        )
+                        while mask.ndim < delta.ndim:
+                            mask = mask.unsqueeze(-1)
+                        delta = delta * mask
                     activations[edge.index] = (
                         activations[edge.index].float()
-                        - clean_source.float()
-                        + corrupt_source.float()
+                        + delta
                     ).to(dtype=activations.dtype)
                 return activations
 
@@ -424,6 +443,62 @@ def mixed_forward_from_prompt_pair(
     with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
         logits = model(clean_tokens, attention_mask=clean_attention_mask)
     return capture.values().detach(), logits.detach()
+
+
+def mixed_logits_from_prompt_pair(
+    model,
+    graph,
+    clean_tokens,
+    clean_attention_mask,
+    corrupt_tokens,
+    corrupt_attention_mask,
+    *,
+    patch_selected: bool,
+    cache_dtype: torch.dtype | None = None,
+):
+    """Patch a clean transcript with a token-aligned natural counterfactual."""
+
+    if tuple(clean_tokens.shape) != tuple(corrupt_tokens.shape):
+        raise ValueError("Clean and corrupt token tensors must have identical shape.")
+    if not torch.equal(clean_attention_mask, corrupt_attention_mask):
+        raise ValueError("Clean and corrupt attention masks must be identical.")
+
+    corrupt_cache: dict[str, torch.Tensor] = {}
+    corrupt_receivers: dict[tuple[str, str | None], torch.Tensor] = {}
+    corrupt_hooks = _source_cache_hooks(
+        model,
+        graph,
+        corrupt_cache,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    if not patch_selected:
+        corrupt_hooks += _receiver_cache_hooks(
+            graph, corrupt_receivers, storage_dtype=cache_dtype
+        )
+    with torch.inference_mode(), model.hooks(fwd_hooks=corrupt_hooks):
+        model(corrupt_tokens, attention_mask=corrupt_attention_mask)
+
+    mixed_cache: dict[str, torch.Tensor] = {}
+    mixed_hooks = _source_cache_hooks(
+        model,
+        graph,
+        mixed_cache,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    mixed_hooks += (
+        _construction_hooks(
+            graph, corrupt_cache, mixed_cache, patch_selected=True
+        )
+        if patch_selected
+        else _sparse_circuit_only_construction_hooks(
+            graph, corrupt_cache, mixed_cache, corrupt_receivers
+        )
+    )
+    with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
+        logits = model(clean_tokens, attention_mask=clean_attention_mask)
+    return logits.detach()
 
 
 def mixed_logits_with_intervention(

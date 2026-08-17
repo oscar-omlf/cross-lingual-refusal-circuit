@@ -1,5 +1,13 @@
 # Qwen Hallucination Persona-Circuit Runbook
 
+> **Superseded methodology warning (2026-08-11):** do not execute this runbook
+> as written. It predates the source-to-sink/cut-set correction and the
+> prompt-only bottleneck mediation tests. First follow
+> `PERSONA_CIRCUIT_METHOD_REPAIR.md`; resume Hallucination only after the
+> opinion-sycophancy mediation and end-to-end comparator gates pass. Existing rankings may be
+> rebuilt on CPU, but circuit-only generation must use explicit
+> `circuits_source_to_sink/` artifacts.
+
 This reproduces the Hallucination experiment with the same methodology used for
 Sycophancy: Anthropic-compatible response-average vector extraction, an upstream
 formation circuit, a downstream expression circuit, their union, and internal

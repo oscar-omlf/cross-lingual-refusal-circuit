@@ -1,5 +1,12 @@
 # Qwen Evil Persona-Circuit Runbook
 
+> **Superseded methodology warning (2026-08-11):** do not launch this pipeline
+> before the repaired sycophancy mechanism passes. This runbook predates the
+> source-to-sink/cut-set correction, prompt-only bottleneck tests, and
+> independent end-to-end comparator.
+> Follow `PERSONA_CIRCUIT_METHOD_REPAIR.md` and update every circuit-only command
+> to use explicit connected artifacts before reactivating this scaffold.
+
 This reproduces the Evil experiment with the same methodology used for
 Sycophancy and Hallucination: Anthropic-compatible response-average vector
 extraction, an upstream formation circuit, a downstream expression circuit,

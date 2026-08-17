@@ -809,6 +809,215 @@ def attribute_steering_contrastive_response_logprob(
     }
 
 
+def attribute_contrastive_prompt_response_logprob(
+    model,
+    graph,
+    transcript_pairs: list[
+        tuple[
+            tuple[str, str, int],
+            tuple[str, str, int],
+        ]
+    ],
+    *,
+    config: AttributionConfig,
+) -> dict:
+    """Attribute natural prompt control of a paired response-logprob margin.
+
+    Each item contains high- and low-trait answer specifications. A specification
+    is ``(positive_prompt_plus_answer, negative_prompt_plus_same_answer,
+    response_start)``. The prompts must be token-aligned and the answer is held
+    fixed across the prompt counterfactual, so root-residual interpolation changes
+    only the natural persona condition. The scalar target is:
+
+        mean_logp(high_trait_answer) - mean_logp(low_trait_answer).
+
+    This is the end-to-end counterpart to the formation/expression decomposition:
+    the graph runs from the natural prompt state at block 0 directly to logits.
+    """
+
+    if not transcript_pairs:
+        raise ValueError("End-to-end attribution requires transcript pairs.")
+    if config.batch_size != 1:
+        raise ValueError(
+            "End-to-end contrastive attribution is sequential; set batch_size=1."
+        )
+    path_alphas = interpolation_path(config.ig_steps)
+    device = next(model.parameters()).device
+    scores = torch.zeros(
+        (graph.n_forward, graph.n_backward),
+        device=device,
+        dtype=torch.float32,
+    )
+    total_pairs = 0
+    clean_margin_sum = 0.0
+    corrupt_margin_sum = 0.0
+    clean_positive_sum = 0.0
+    clean_negative_sum = 0.0
+    corrupt_positive_sum = 0.0
+    corrupt_negative_sum = 0.0
+
+    iterator = tqdm(
+        transcript_pairs,
+        total=len(transcript_pairs),
+        desc="End-to-end contrastive EAP-IG",
+    )
+    for positive_spec, negative_spec in iterator:
+        total_pairs += 1
+        clean_values_for_pair = []
+        corrupt_values_for_pair = []
+        for sign, (clean_text, corrupt_text, response_start) in (
+            (1.0, positive_spec),
+            (-1.0, negative_spec),
+        ):
+            clean_tokens, clean_mask = tokenize_prompts(
+                model, [clean_text], max_length=config.max_length
+            )
+            corrupt_tokens, corrupt_mask = tokenize_prompts(
+                model, [corrupt_text], max_length=config.max_length
+            )
+            if tuple(clean_tokens.shape) != tuple(corrupt_tokens.shape):
+                raise ValueError(
+                    "End-to-end clean/corrupt transcripts must have identical shape."
+                )
+            if not torch.equal(clean_mask, corrupt_mask):
+                raise ValueError(
+                    "End-to-end clean/corrupt attention masks must match."
+                )
+            if not torch.equal(
+                clean_tokens[:, response_start:],
+                corrupt_tokens[:, response_start:],
+            ):
+                raise ValueError(
+                    "End-to-end answer tokens must be identical across the "
+                    "prompt counterfactual."
+                )
+            batch_size, n_pos = clean_tokens.shape
+            response_mask = _response_mask(
+                clean_tokens, clean_mask, [response_start]
+            )
+            fwd_corrupt, fwd_clean, bwd_hooks, activation_difference = (
+                _make_eap_hooks(
+                    model,
+                    graph,
+                    batch_size,
+                    n_pos,
+                    scores,
+                    direction=None,
+                    include_logit_gradients=True,
+                    natural_corrupt=True,
+                )
+            )
+            corrupt_input: dict[str, torch.Tensor] = {}
+            clean_input: dict[str, torch.Tensor] = {}
+
+            def capture_input(store: dict[str, torch.Tensor]):
+                def hook(activations: torch.Tensor, hook):
+                    del hook
+                    store["value"] = activations.detach()
+                    return activations
+
+                return hook
+
+            with torch.no_grad(), model.hooks(
+                fwd_hooks=[
+                    *fwd_corrupt,
+                    (
+                        graph.nodes["input"].out_hook,
+                        capture_input(corrupt_input),
+                    ),
+                ]
+            ):
+                corrupt_logits = _run_forward(
+                    model, corrupt_tokens, corrupt_mask, fwd_corrupt
+                )
+                corrupt_value = response_logprob_values(
+                    corrupt_logits, corrupt_tokens, response_mask
+                )[0]
+            with torch.no_grad(), model.hooks(
+                fwd_hooks=[
+                    *fwd_clean,
+                    (
+                        graph.nodes["input"].out_hook,
+                        capture_input(clean_input),
+                    ),
+                ]
+            ):
+                clean_logits = _run_forward(
+                    model, clean_tokens, clean_mask, fwd_clean
+                )
+                clean_value = response_logprob_values(
+                    clean_logits, clean_tokens, response_mask
+                )[0]
+            if "value" not in corrupt_input or "value" not in clean_input:
+                raise RuntimeError("End-to-end graph input hook did not fire.")
+            clean_values_for_pair.append(float(clean_value.item()))
+            corrupt_values_for_pair.append(float(corrupt_value.item()))
+
+            for alpha in path_alphas:
+                model.zero_grad(set_to_none=True)
+                interpolated = (
+                    corrupt_input["value"]
+                    + float(alpha)
+                    * (clean_input["value"] - corrupt_input["value"])
+                ).detach()
+
+                def interpolate_input(activations: torch.Tensor, hook):
+                    del activations, hook
+                    return interpolated.clone().requires_grad_(True)
+
+                with model.hooks(
+                    fwd_hooks=[
+                        (
+                            graph.nodes["input"].out_hook,
+                            interpolate_input,
+                        )
+                    ],
+                    bwd_hooks=bwd_hooks,
+                ):
+                    logits = _run_forward(
+                        model, clean_tokens, clean_mask, ()
+                    )
+                    value = response_logprob_values(
+                        logits, clean_tokens, response_mask
+                    )[0]
+                    (sign * value).backward()
+
+        clean_positive, clean_negative = clean_values_for_pair
+        corrupt_positive, corrupt_negative = corrupt_values_for_pair
+        clean_margin_sum += clean_positive - clean_negative
+        corrupt_margin_sum += corrupt_positive - corrupt_negative
+        clean_positive_sum += clean_positive
+        clean_negative_sum += clean_negative
+        corrupt_positive_sum += corrupt_positive
+        corrupt_negative_sum += corrupt_negative
+
+    scores /= total_pairs * config.ig_steps
+    if not torch.isfinite(scores).all():
+        raise RuntimeError("Non-finite end-to-end contrastive EAP-IG scores.")
+    for edge in graph.edges.values():
+        edge.score = float(
+            scores[
+                graph.forward_index(edge.parent, attn_slice=False),
+                graph.backward_index(
+                    edge.child, qkv=edge.qkv, attn_slice=False
+                ),
+            ].item()
+        )
+    return {
+        "clean_contrastive_margin": clean_margin_sum / total_pairs,
+        "corrupt_contrastive_margin": corrupt_margin_sum / total_pairs,
+        "clean_minus_corrupt_margin": (
+            clean_margin_sum - corrupt_margin_sum
+        )
+        / total_pairs,
+        "clean_positive_response_logprob": clean_positive_sum / total_pairs,
+        "clean_negative_response_logprob": clean_negative_sum / total_pairs,
+        "corrupt_positive_response_logprob": corrupt_positive_sum / total_pairs,
+        "corrupt_negative_response_logprob": corrupt_negative_sum / total_pairs,
+        "path_alphas": list(path_alphas),
+    }
+
+
 def attribute_response_average(
     model,
     graph,

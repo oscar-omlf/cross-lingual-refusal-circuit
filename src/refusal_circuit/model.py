@@ -191,6 +191,36 @@ def load_model(
     return model
 
 
+def observed_model_architecture(model) -> dict[str, int | bool]:
+    """Return the graph-relevant architecture pinned by persona configs."""
+
+    return {
+        "n_layers": int(model.cfg.n_layers),
+        "n_heads": int(model.cfg.n_heads),
+        "parallel_attn_mlp": bool(model.cfg.parallel_attn_mlp),
+    }
+
+
+def validate_model_architecture(
+    model,
+    expected: dict,
+) -> dict[str, int | bool]:
+    """Fail before attribution when the loaded graph differs from the config."""
+
+    observed = observed_model_architecture(model)
+    normalized_expected = {
+        "n_layers": int(expected["n_layers"]),
+        "n_heads": int(expected["n_heads"]),
+        "parallel_attn_mlp": bool(expected["parallel_attn_mlp"]),
+    }
+    if observed != normalized_expected:
+        raise ValueError(
+            "Loaded model architecture differs from the pinned config: "
+            f"{observed} != {normalized_expected}"
+        )
+    return observed
+
+
 def format_instruction(tokenizer, instruction: str) -> str:
     """Format one user instruction with the tokenizer's native generation prompt.
 

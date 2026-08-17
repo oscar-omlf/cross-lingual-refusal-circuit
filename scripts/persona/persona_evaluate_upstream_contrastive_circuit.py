@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 from _bootstrap import ROOT
@@ -23,8 +24,21 @@ def main() -> None:
     parser.add_argument("--circuit-path", type=Path, default=None)
     parser.add_argument("--output-tag", default=None)
     parser.add_argument("--num-pairs", type=int, default=32)
-    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument(
+        "--evaluation-manifest",
+        type=Path,
+        required=True,
+        help=(
+            "Frozen prompt-disjoint manifest produced by "
+            "persona.freeze-upstream-evaluation."
+        ),
+    )
     parser.add_argument("--max-length", type=int, default=256)
+    parser.add_argument(
+        "--allow-disconnected-circuit-only",
+        action="store_true",
+        help="Permit legacy cut-set sufficiency diagnostics.",
+    )
     parser.add_argument("--device", default=None)
     parser.add_argument("--dtype", default="bfloat16")
     args = parser.parse_args()
@@ -39,11 +53,16 @@ def main() -> None:
         normalized_necessity,
     )
     from refusal_circuit.graph import (
+        circuit_connectivity,
         load_circuit_edge_names,
         make_projection_graph,
         set_selected_edges,
     )
-    from refusal_circuit.model import load_model, tokenize_prompts
+    from refusal_circuit.model import (
+        load_model,
+        tokenize_prompts,
+        validate_model_architecture,
+    )
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import make_system_prompt, sha256_file
 
@@ -61,10 +80,10 @@ def main() -> None:
         "no_projection_ablation"
     ):
         raise ValueError("Discovery is not a completed non-projection run")
+    if metadata.get("model") != config["model"]:
+        raise ValueError("Discovery and evaluation model configurations differ.")
 
-    import random
-
-    trait_data_path = official_root / "eval.json"
+    trait_data_path = official_root / "extract.json"
     trait_data = json.loads(trait_data_path.read_text(encoding="utf-8"))
     model_cfg = config["model"]
     model = load_model(
@@ -73,71 +92,109 @@ def main() -> None:
         dtype=args.dtype,
         revision=model_cfg.get("revision"),
     )
-    by_question = {}
-    rng = random.Random(args.seed)
-    for question_index, question in enumerate(trait_data["questions"]):
-        instruction_indices = list(range(len(trait_data["instruction"])))
-        rng.shuffle(instruction_indices)
-        by_question[question_index] = []
-        for instruction_index in instruction_indices:
-            instruction = trait_data["instruction"][instruction_index]
-            positive_system = make_system_prompt(
-                config["trait"]["positive_assistant_name"], instruction["pos"]
-            )
-            positive_prompt = model.tokenizer.apply_chat_template(
-                [
-                    {"role": "system", "content": positive_system},
-                    {"role": "user", "content": question},
-                ],
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-            positive_ids = model.tokenizer.encode(
-                positive_prompt, add_special_tokens=False
-            )
-            negative_system = make_system_prompt(
-                config["trait"]["negative_assistant_name"], instruction["neg"]
-            )
-            negative_prompt = model.tokenizer.apply_chat_template(
-                [
-                    {"role": "system", "content": negative_system},
-                    {"role": "user", "content": question},
-                ],
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-            negative_ids = model.tokenizer.encode(
-                negative_prompt, add_special_tokens=False
-            )
-            # Skip pairs that cannot be token-aligned; this is the same
-            # alignment requirement used by the upstream EAP-IG discovery path.
-            if len(negative_ids) > len(positive_ids):
-                continue
-            aligned, alignment = _align_negative_prompt(
-                model.tokenizer,
-                question=question,
-                negative_assistant_name=config["trait"]["negative_assistant_name"],
-                negative_instruction=instruction["neg"],
-                positive_prompt=positive_prompt,
-            )
-            by_question[question_index].append(
-                {
-                    "question_index": question_index,
-                    "instruction_index": instruction_index,
-                    "positive_prompt": positive_prompt,
-                    "aligned_negative_prompt": aligned,
-                    "alignment": alignment,
-                }
-            )
-    selected = []
-    for depth in range(max(map(len, by_question.values()))):
-        for question_index in sorted(by_question):
-            if depth < len(by_question[question_index]):
-                selected.append(by_question[question_index][depth])
-    selected = selected[: args.num_pairs]
+    observed_architecture = validate_model_architecture(
+        model, config["model_architecture"]
+    )
+    evaluation_manifest_path = (
+        args.evaluation_manifest
+        if args.evaluation_manifest.is_absolute()
+        else ROOT / args.evaluation_manifest
+    )
+    evaluation_manifest = json.loads(
+        evaluation_manifest_path.read_text(encoding="utf-8")
+    )
+    if (
+        evaluation_manifest.get("status") != "frozen"
+        or evaluation_manifest.get("protocol")
+        != "prompt_disjoint_upstream_evaluation_v1"
+        or evaluation_manifest.get("model") != model_cfg
+        or evaluation_manifest.get("trait") != trait_slug
+        or evaluation_manifest["sources"]["extract_sha256"]
+        != sha256_file(trait_data_path)
+    ):
+        raise ValueError("Upstream evaluation manifest failed provenance.")
+    discovery_manifest_path = ROOT / evaluation_manifest[
+        "discovery_manifest"
+    ]
+    if (
+        sha256_file(discovery_manifest_path)
+        != evaluation_manifest["discovery_manifest_sha256"]
+        or sha256_file(discovery_manifest_path)
+        != metadata.get("sample_manifest_sha256")
+    ):
+        raise ValueError(
+            "Upstream evaluation was not frozen against this discovery split."
+        )
+    discovery_manifest = json.loads(
+        discovery_manifest_path.read_text(encoding="utf-8")
+    )
+    discovery_identities = {
+        (int(row["question_index"]), int(row["instruction_index"]))
+        for row in discovery_manifest["discovery"]["samples"]
+    }
+    selected = evaluation_manifest["selection"]["samples"]
     if len(selected) != args.num_pairs:
         raise ValueError(
-            f"Requested {args.num_pairs} held-out pairs, found {len(selected)}"
+            f"Manifest has {len(selected)} held-out pairs, "
+            f"but --num-pairs={args.num_pairs}."
+        )
+    selected_identities = {
+        (int(row["question_index"]), int(row["instruction_index"]))
+        for row in selected
+    }
+    if (
+        len(selected_identities) != len(selected)
+        or selected_identities & discovery_identities
+    ):
+        raise ValueError(
+            "Upstream evaluation identities are duplicated or overlap discovery."
+        )
+    for row in selected:
+        question_index = int(row["question_index"])
+        instruction_index = int(row["instruction_index"])
+        question = trait_data["questions"][question_index]
+        instruction = trait_data["instruction"][instruction_index]
+        positive_system = make_system_prompt(
+            config["trait"]["positive_assistant_name"], instruction["pos"]
+        )
+        positive_prompt = model.tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": positive_system},
+                {"role": "user", "content": question},
+            ],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        aligned, alignment = _align_negative_prompt(
+            model.tokenizer,
+            question=question,
+            negative_assistant_name=config["trait"][
+                "negative_assistant_name"
+            ],
+            negative_instruction=instruction["neg"],
+            positive_prompt=positive_prompt,
+        )
+        if (
+            row["positive_prompt"] != positive_prompt
+            or row["aligned_negative_prompt"] != aligned
+            or row["alignment"] != alignment
+        ):
+            raise ValueError(
+                f"Frozen upstream prompt changed for {(question_index, instruction_index)}."
+            )
+    overlength = [
+        (
+            row["question_index"],
+            row["instruction_index"],
+            int(row["alignment"]["positive_tokens"]),
+        )
+        for row in selected
+        if int(row["alignment"]["positive_tokens"]) > args.max_length
+    ]
+    if overlength:
+        raise ValueError(
+            "Held-out upstream prompts exceed --max-length; refusing "
+            f"truncation: {overlength[:3]}"
         )
 
     # Use the trait-specific vector artifact so held-out evaluation stays aligned.
@@ -152,7 +209,9 @@ def main() -> None:
     circuit_path = (
         args.circuit_path
         if args.circuit_path is not None
-        else discovery / "circuits_nested" / f"eapig_top_{args.k}.json"
+        else discovery
+        / "circuits_source_to_sink"
+        / f"eapig_top_{args.k}.json"
     )
     circuit_path = circuit_path if circuit_path.is_absolute() else ROOT / circuit_path
     circuit_payload = json.loads(circuit_path.read_text(encoding="utf-8"))
@@ -162,6 +221,16 @@ def main() -> None:
         raise ValueError("Circuit was not derived from the frozen discovery scores.")
     graph = make_projection_graph(model, target_layer)
     edge_names = load_circuit_edge_names(circuit_path)
+    connectivity = circuit_connectivity(graph, edge_names)
+    if (
+        not connectivity["all_edges_on_source_to_sink_paths"]
+        and not args.allow_disconnected_circuit_only
+    ):
+        raise ValueError(
+            "Circuit-only evaluation requires a source-to-sink circuit. "
+            "Rebuild with --families source_to_sink, or pass "
+            "--allow-disconnected-circuit-only only for a legacy diagnostic."
+        )
     set_selected_edges(graph, edge_names)
 
     values = {
@@ -229,9 +298,22 @@ def main() -> None:
         instances.append(record)
 
     tensors = {name: torch.tensor(items) for name, items in values.items()}
+    for name, tensor in tensors.items():
+        if not torch.isfinite(tensor).all():
+            raise RuntimeError(
+                f"Held-out {name} metric contains non-finite values."
+            )
+    clean_corrupt_gap = float(
+        tensors["clean"].mean().item() - tensors["corrupt"].mean().item()
+    )
+    if not math.isfinite(clean_corrupt_gap) or clean_corrupt_gap <= 1e-8:
+        raise RuntimeError(
+            "Held-out clean-minus-corrupt projection margin is not finite and "
+            "positive; normalized circuit metrics are not behavior-aligned."
+        )
     output_name = (
         args.output_tag
-        or f"k{args.k}_n{args.num_pairs}_seed{args.seed}"
+        or f"k{args.k}_n{args.num_pairs}_prompt_disjoint"
     )
     output = discovery / "evaluation" / output_name
     if output.exists() and any(output.iterdir()):
@@ -245,10 +327,18 @@ def main() -> None:
         "no_projection_ablation": True,
         "claim_scope": "held-out upstream positive-versus-negative persona mediation",
         "run_name": args.run_name,
+        "model": model_cfg,
+        "model_architecture": observed_architecture,
         "requested_k": args.k,
         "retained_edges": len(edge_names),
+        "connectivity": connectivity,
         "n_pairs": len(selected),
-        "seed": args.seed,
+        "evaluation_manifest": str(
+            evaluation_manifest_path.relative_to(ROOT)
+        ),
+        "evaluation_manifest_sha256": sha256_file(
+            evaluation_manifest_path
+        ),
         "prompt_pairs": [
             {
                 "question_index": row["question_index"],
@@ -277,6 +367,10 @@ def main() -> None:
             tensors["clean"], tensors["corrupt"], tensors["circuit_ablated"]
         ),
         "max_length": args.max_length,
+        "max_observed_tokens": max(
+            int(row["alignment"]["positive_tokens"]) for row in selected
+        ),
+        "truncation": False,
         "behavioral_validation_required": True,
     }
     write_json(output / "aggregate.json", aggregate)

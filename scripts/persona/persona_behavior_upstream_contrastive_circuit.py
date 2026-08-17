@@ -88,16 +88,22 @@ def main() -> None:
 
     from refusal_circuit.circuit import mixed_forward_from_prompt_pair
     from refusal_circuit.graph import (
+        circuit_connectivity,
         load_circuit_edge_names,
         make_projection_graph,
         set_selected_edges,
     )
-    from refusal_circuit.model import load_model, tokenize_prompts
+    from refusal_circuit.model import (
+        load_model,
+        tokenize_prompts,
+        validate_model_architecture,
+    )
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import (
         make_system_prompt,
         read_jsonl,
         sha256_file,
+        token_ids_sha256,
         write_jsonl,
     )
 
@@ -114,10 +120,14 @@ def main() -> None:
         "no_projection_ablation"
     ):
         raise ValueError("Discovery is not a completed non-projection upstream run")
+    if discovery_metadata.get("model") != config["model"]:
+        raise ValueError("Discovery and behavior model configurations differ.")
     circuit_path = (
         args.circuit_path
         if args.circuit_path is not None
-        else discovery / "circuits_nested" / f"eapig_top_{args.k}.json"
+        else discovery
+        / "circuits_source_to_sink"
+        / f"eapig_top_{args.k}.json"
     )
     circuit_path = circuit_path if circuit_path.is_absolute() else ROOT / circuit_path
     circuit_payload = json.loads(circuit_path.read_text(encoding="utf-8"))
@@ -153,6 +163,9 @@ def main() -> None:
         dtype=args.dtype,
         revision=model_cfg.get("revision"),
     )
+    observed_architecture = validate_model_architecture(
+        model, config["model_architecture"]
+    )
     designed = []
     for question_index in args.question_indices:
         if not 0 <= question_index < len(questions):
@@ -187,10 +200,11 @@ def main() -> None:
         negative_ids = model.tokenizer.encode(
             negative_prompt, add_special_tokens=False
         )
-        # Preserve the original free-generation validation while skipping
-        # prompt pairs that cannot satisfy the same token-alignment gate.
         if len(negative_ids) > len(positive_ids):
-            continue
+            raise ValueError(
+                f"Question {question_index} cannot be token-aligned: the "
+                "negative prompt is longer than the positive prompt."
+            )
         aligned_negative_prompt, alignment = _align_negative_prompt(
             model.tokenizer,
             question=questions[question_index],
@@ -198,6 +212,11 @@ def main() -> None:
             negative_instruction=instruction["neg"],
             positive_prompt=positive_prompt,
         )
+        if alignment["positive_tokens"] > args.max_length:
+            raise ValueError(
+                f"Question {question_index} exceeds --max-length; refusing "
+                "to truncate an upstream behavioral prompt."
+            )
         designed.append(
             {
                 "question_id": f"{trait_slug}_{question_index}",
@@ -222,7 +241,22 @@ def main() -> None:
     target_hook = config["vector"]["transformer_lens_target_hook"]
     graph = make_projection_graph(model, target_layer)
     edge_names = load_circuit_edge_names(circuit_path)
+    connectivity = circuit_connectivity(graph, edge_names)
+    if (
+        "circuit_only" in args.conditions
+        and not connectivity["all_edges_on_source_to_sink_paths"]
+    ):
+        raise ValueError(
+            "Circuit-only generation requires a source-to-interface circuit. "
+            "Use a rebuilt circuits_source_to_sink artifact."
+        )
     set_selected_edges(graph, edge_names)
+    model.set_ungroup_grouped_query_attention(True)
+    if not model.cfg.use_attn_result:
+        raise RuntimeError(
+            "Upstream behavior evaluation requires TransformerLens' "
+            "reference per-head attention results."
+        )
 
     initialized_from = None
     initialized_from_circuit = None
@@ -233,6 +267,23 @@ def main() -> None:
             else ROOT / args.initialize_from
         )
         source_rows = read_jsonl(source_path)
+        source_metadata_path = source_path.with_name("metadata.json")
+        source_metadata = json.loads(
+            source_metadata_path.read_text(encoding="utf-8")
+        )
+        if (
+            source_metadata.get("status") != "complete"
+            or source_metadata.get("decoding", {}).get("backend")
+            != "full_prefix_forward_ungrouped_gqa"
+            or any(
+                not row.get("generated_token_ids_sha256")
+                for row in source_rows
+            )
+        ):
+            raise ValueError(
+                "Initialization requires a completed same-backend artifact "
+                "with exact generated-token hashes."
+            )
         source_circuit_path = (
             args.initialize_from_circuit
             if args.initialize_from_circuit.is_absolute()
@@ -281,18 +332,78 @@ def main() -> None:
     rows_by_id = {row["record_id"]: row for row in existing_rows}
     if len(rows_by_id) != len(existing_rows):
         raise ValueError("Duplicate behavioral record IDs")
+    expected_resume = {
+        "behavior_protocol_id": config["protocol_id"],
+        "model": model_cfg,
+        "model_architecture": observed_architecture,
+        "discovery_metadata_sha256": sha256_file(metadata_path),
+        "circuit_sha256": sha256_file(circuit_path),
+        "requested_k": args.k,
+        "question_indices": args.question_indices,
+        "conditions": list(args.conditions),
+        "decoding": {
+            "do_sample": False,
+            "max_new_tokens": args.max_new_tokens,
+            "backend": "full_prefix_forward_ungrouped_gqa",
+        },
+        "max_length": args.max_length,
+    }
+    if args.resume:
+        if not output_metadata_path.exists():
+            raise ValueError("Cannot resume without the original metadata.json.")
+        previous_metadata = json.loads(
+            output_metadata_path.read_text(encoding="utf-8")
+        )
+        mismatched = [
+            key
+            for key, value in expected_resume.items()
+            if previous_metadata.get(key) != value
+        ]
+        if mismatched:
+            raise ValueError(
+                f"Resume arguments differ from the original run: {mismatched}"
+            )
+    expected_ids = {
+        f"natural-upstream-{args.run_name}-k{args.k}-{condition}-q{question:02d}"
+        for condition in args.conditions
+        for question in args.question_indices
+    }
+    unexpected_ids = set(rows_by_id) - expected_ids
+    if unexpected_ids:
+        raise ValueError(
+            f"Resume artifact contains unexpected records: {sorted(unexpected_ids)[:3]}"
+        )
 
-    # Normal greedy answers are independent of circuit choice and were already
-    # generated and judged at the same 256-token cap on these exact prompts.
+    # Reuse a normal row only when it came from the identical full-prefix
+    # backend. Historical KV-cache baselines are intentionally regenerated.
     baseline_path = args.baseline_responses or (
         intermediate / "behavioral_pilot/k3000_n20/responses.jsonl"
     )
     baseline_path = baseline_path if baseline_path.is_absolute() else ROOT / baseline_path
     baseline_scored_path = baseline_path.with_name("scored.jsonl")
+    baseline_metadata_path = baseline_path.with_name("metadata.json")
+    baseline_metadata = (
+        json.loads(baseline_metadata_path.read_text(encoding="utf-8"))
+        if baseline_metadata_path.exists()
+        else {}
+    )
+    baseline_compatible = (
+        baseline_metadata.get("status") == "complete"
+        and baseline_metadata.get("model") == model_cfg
+        and baseline_metadata.get("model_architecture")
+        == observed_architecture
+        and baseline_metadata.get("decoding", {}).get("backend")
+        == "full_prefix_forward_ungrouped_gqa"
+    )
     baseline = {
         int(row["question_index"]): row
-        for row in (read_jsonl(baseline_path) if baseline_path.exists() else [])
+        for row in (
+            read_jsonl(baseline_path)
+            if baseline_path.exists() and baseline_compatible
+            else []
+        )
         if row["condition"] == "normal"
+        and row.get("generated_token_ids_sha256")
     }
     for source in designed if "normal" in args.conditions else []:
         record_id = (
@@ -341,6 +452,7 @@ def main() -> None:
                 ),
                 "behavior_protocol_id": config["protocol_id"],
                 "model": model_cfg,
+                "model_architecture": observed_architecture,
                 "trait": config["trait"],
                 "eval_artifact": str(official.relative_to(ROOT)),
                 "eval_artifact_sha256": sha256_file(official),
@@ -352,6 +464,7 @@ def main() -> None:
                 "direction_sha256": sha256_file(direction_path),
                 "requested_k": args.k,
                 "retained_edges": len(edge_names),
+                "connectivity": connectivity,
                 "question_indices": args.question_indices,
                 "conditions": list(args.conditions),
                 "counterfactual": (
@@ -361,7 +474,10 @@ def main() -> None:
                 "decoding": {
                     "do_sample": False,
                     "max_new_tokens": args.max_new_tokens,
+                    "backend": "full_prefix_forward_ungrouped_gqa",
                 },
+                "generation_backend": "full_prefix_forward_ungrouped_gqa",
+                "max_length": args.max_length,
                 "checkpointing": "one JSONL append per completed response",
                 "initialized_from": initialized_from,
                 "initialized_from_circuit": initialized_from_circuit,
@@ -395,59 +511,34 @@ def main() -> None:
             },
         )
 
-    save_metadata("running")
-    if "normal" in args.conditions:
-        model.set_ungroup_grouped_query_attention(False)
-        try:
-            for source in tqdm(designed, desc="normal"):
-                record_id = (
-                    f"natural-upstream-{args.run_name}-k{args.k}-normal-"
-                    f"q{source['question_index']:02d}"
-                )
-                if record_id in rows_by_id:
-                    continue
-                prompt_tokens, _ = tokenize_prompts(
-                    model, [source["prompt"]], max_length=args.max_length
-                )
-                generated_tensor = model.generate(
-                    prompt_tokens,
-                    max_new_tokens=args.max_new_tokens,
-                    stop_at_eos=True,
-                    do_sample=False,
-                    use_past_kv_cache=True,
-                    return_type="tokens",
-                    verbose=False,
-                )
-                generated = generated_tensor[
-                    0, prompt_tokens.shape[1] :
-                ].tolist()
-                row = {
-                    **source,
-                    "schema_version": 1,
-                    "record_id": record_id,
-                    "behavior_protocol_id": config["protocol_id"],
-                    "trait": trait_slug,
-                    "model": model_cfg["name"],
-                    "model_revision": model_cfg.get("revision"),
-                    "condition": "normal",
-                    "requested_k": args.k,
-                    "retained_edges": len(edge_names),
-                    "answer": model.tokenizer.decode(
-                        generated, skip_special_tokens=True
+    def plain_full_prefix_generation(tokens, mask) -> list[int]:
+        generated: list[int] = []
+        eos_id = model.tokenizer.eos_token_id
+        for _ in range(args.max_new_tokens):
+            with torch.inference_mode():
+                logits = model(tokens, attention_mask=mask).detach()
+            next_token = int(logits[0, -1].argmax().item())
+            del logits
+            generated.append(next_token)
+            appended = torch.tensor(
+                [[next_token]], device=tokens.device, dtype=tokens.dtype
+            )
+            tokens = torch.cat([tokens, appended], dim=1)
+            mask = torch.cat(
+                [
+                    mask,
+                    torch.ones(
+                        (1, 1), device=mask.device, dtype=mask.dtype
                     ),
-                    "generated_token_count": len(generated),
-                    "hit_max_new_tokens": len(generated) >= args.max_new_tokens,
-                    "decoding": "greedy",
-                    "extension_method": None,
-                }
-                write_jsonl(raw_path, [row], mode="a")
-                rows_by_id[record_id] = row
-                save_metadata("running")
-        finally:
-            model.set_ungroup_grouped_query_attention(True)
+                ],
+                dim=1,
+            )
+            if eos_id is not None and next_token == eos_id:
+                break
+        return generated
+
+    save_metadata("running")
     for condition in args.conditions:
-        if condition == "normal":
-            continue
         for source in tqdm(designed, desc=condition):
             record_id = (
                 f"natural-upstream-{args.run_name}-k{args.k}-{condition}-"
@@ -492,38 +583,33 @@ def main() -> None:
                 model, [corrupt_prompt], max_length=args.max_length
             )
             extension_method = None
-            if condition == "negative_prompt":
-                model.set_ungroup_grouped_query_attention(False)
-                try:
-                    generated_tensor = model.generate(
-                        corrupt_tokens,
-                        max_new_tokens=args.max_new_tokens,
-                        stop_at_eos=True,
-                        do_sample=False,
-                        use_past_kv_cache=True,
-                        return_type="tokens",
-                        verbose=False,
-                    )
-                finally:
-                    model.set_ungroup_grouped_query_attention(True)
-                generated = generated_tensor[
-                    0, corrupt_tokens.shape[1] :
-                ].tolist()
+            if condition == "normal":
+                generated = plain_full_prefix_generation(
+                    clean_tokens, clean_mask
+                )
+            elif condition == "negative_prompt":
+                generated = plain_full_prefix_generation(
+                    corrupt_tokens, corrupt_mask
+                )
             else:
                 generated = []
                 if should_extend:
-                    generated = model.tokenizer.encode(
-                        previous["answer"], add_special_tokens=False
-                    )
-                    if len(generated) != int(previous["generated_token_count"]):
-                        # Decoding with ``skip_special_tokens=True`` can discard
-                        # a terminal EOS generated exactly at the old cap.  In
-                        # that rare case the exact prefix is unrecoverable, so
-                        # regenerate this one record instead of guessing.
+                    generated = [
+                        int(token_id)
+                        for token_id in previous.get(
+                            "generated_token_ids", []
+                        )
+                    ]
+                    if (
+                        len(generated)
+                        != int(previous["generated_token_count"])
+                        or token_ids_sha256(generated)
+                        != previous.get("generated_token_ids_sha256")
+                    ):
                         generated = []
                         extension_method = "regenerated_unrecoverable_prefix"
                     else:
-                        extension_method = "continued_exact_reencoded_prefix"
+                        extension_method = "continued_exact_saved_token_prefix"
                         prefix = torch.tensor(
                             [generated],
                             device=clean_tokens.device,
@@ -599,6 +685,8 @@ def main() -> None:
                     generated, skip_special_tokens=True
                 ),
                 "generated_token_count": len(generated),
+                "generated_token_ids": generated,
+                "generated_token_ids_sha256": token_ids_sha256(generated),
                 "hit_max_new_tokens": len(generated) >= args.max_new_tokens,
                 "decoding": "greedy",
                 "extension_method": extension_method,

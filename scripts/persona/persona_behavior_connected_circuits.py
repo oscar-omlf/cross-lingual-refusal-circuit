@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Test vector mediation and connected upstream/downstream persona circuits.
 
-The upstream corruption is the token-aligned negative-persona prompt. The downstream
-corruption is signed negative steering at the configured persona interface, conditional
-on the upstream intervention and any interface rescue. Each generation step
-uses the same already-generated prefix in every counterfactual run.
+The upstream corruption is the token-aligned negative-persona prompt. By
+default, upstream edges are patched only at prompt positions and interface
+rescue is applied at the fixed final prompt token. This directly tests the
+formation-interface-expression hypothesis. Recurrent all-position variants are
+available as an explicit diagnostic. The downstream corruption is signed
+negative steering for joint necessity/reconstruction conditions. The specific
+mediation condition instead patches downstream edges from the same upstream-cut
+run without rescue into the vector-rescued run, isolating transmission of the
+rescue-induced effect.
 """
 
 from __future__ import annotations
@@ -19,13 +24,34 @@ from persona_run_upstream_contrastive_eapig import _align_negative_prompt
 
 
 CONDITIONS = (
+    "normal",
+    "upstream_ablated",
+    "downstream_ablated",
     "both_ablated",
     "both_circuit_only",
     "upstream_vector_rescue",
     "upstream_full_state_rescue",
+    "upstream_full_prefix_state_rescue",
     "upstream_orthogonal_rescue",
+    "upstream_unrelated_vector_rescue",
     "vector_rescue_downstream_ablated",
 )
+
+
+def _downstream_estimand(condition: str) -> str:
+    if condition == "vector_rescue_downstream_ablated":
+        return "rescue_effect_blocking"
+    if condition in {
+        "downstream_ablated",
+        "both_ablated",
+        "both_circuit_only",
+    }:
+        return "negative_steering"
+    return "none"
+
+
+def _uses_upstream_intervention(condition: str) -> bool:
+    return condition not in {"normal", "downstream_ablated"}
 
 
 def _prompt_identity_sha256(path: Path) -> str:
@@ -54,6 +80,17 @@ def main() -> None:
     parser.add_argument("--downstream-run", required=True)
     parser.add_argument("--upstream-k", type=int, required=True)
     parser.add_argument("--downstream-k", type=int, required=True)
+    parser.add_argument("--upstream-circuit-path", type=Path, default=None)
+    parser.add_argument("--downstream-circuit-path", type=Path, default=None)
+    parser.add_argument(
+        "--unrelated-vector-path",
+        type=Path,
+        default=None,
+        help=(
+            "All-layer or single-layer vector used by "
+            "upstream_unrelated_vector_rescue."
+        ),
+    )
     parser.add_argument("--condition", choices=CONDITIONS, required=True)
     parser.add_argument("--question-indices", type=int, nargs="+", required=True)
     parser.add_argument(
@@ -63,12 +100,50 @@ def main() -> None:
     )
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--max-length", type=int, default=512)
+    parser.add_argument(
+        "--upstream-position-scope",
+        choices=("prompt_only", "all_positions"),
+        default="prompt_only",
+        help=(
+            "Patch upstream edges only over the original prompt, or also over "
+            "generated response positions."
+        ),
+    )
+    parser.add_argument(
+        "--interface-timing",
+        choices=("prompt_end", "current_token"),
+        default="prompt_end",
+        help=(
+            "Restore the interface at the fixed final prompt token, or at the "
+            "current next-token predictor on every decoding step."
+        ),
+    )
+    parser.add_argument("--orthogonal-seed", type=int, default=0)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--device", default=None)
     parser.add_argument("--dtype", default="bfloat16")
     args = parser.parse_args()
     if len(args.question_indices) != len(set(args.question_indices)):
         raise ValueError("Question indices must be unique.")
+    if (
+        args.condition == "both_circuit_only"
+        and args.upstream_position_scope != "all_positions"
+    ):
+        raise ValueError(
+            "Circuit-only reconstruction is an all-position intervention; "
+            "pass --upstream-position-scope all_positions."
+        )
+    if (
+        args.condition == "upstream_full_prefix_state_rescue"
+        and (
+            args.upstream_position_scope != "prompt_only"
+            or args.interface_timing != "prompt_end"
+        )
+    ):
+        raise ValueError(
+            "Full-prefix interface rescue is the positive control for the "
+            "prompt_only/prompt_end bottleneck estimand."
+        )
 
     import torch
     from tqdm.auto import tqdm
@@ -80,18 +155,25 @@ def main() -> None:
         _source_cache_hooks,
     )
     from refusal_circuit.graph import (
+        circuit_connectivity,
         load_circuit_edge_names,
         make_projection_graph,
         make_steering_to_logits_graph,
         set_selected_edges,
+        validate_intervention_connectivity,
     )
     from refusal_circuit.interventions import activation_addition_hook
-    from refusal_circuit.model import load_model, tokenize_prompts
+    from refusal_circuit.model import (
+        load_model,
+        tokenize_prompts,
+        validate_model_architecture,
+    )
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import (
         make_system_prompt,
         read_jsonl,
         sha256_file,
+        token_ids_sha256,
         write_jsonl,
     )
 
@@ -115,8 +197,27 @@ def main() -> None:
     downstream_metadata = json.loads(
         downstream_metadata_path.read_text(encoding="utf-8")
     )
+    if (
+        upstream_metadata.get("status") != "complete"
+        or downstream_metadata.get("status") != "complete"
+    ):
+        raise ValueError("Connected evaluation requires completed discoveries.")
+    if (
+        upstream_metadata.get("model") != config["model"]
+        or downstream_metadata.get("model") != config["model"]
+    ):
+        raise ValueError(
+            "Connected discoveries and behavior model configurations differ."
+        )
     upstream_sample_manifest = ROOT / upstream_metadata["sample_manifest"]
     downstream_sample_manifest = ROOT / downstream_metadata["sample_manifest"]
+    if (
+        sha256_file(upstream_sample_manifest)
+        != upstream_metadata.get("sample_manifest_sha256")
+        or sha256_file(downstream_sample_manifest)
+        != downstream_metadata.get("sample_manifest_sha256")
+    ):
+        raise ValueError("A connected discovery sample manifest hash changed.")
     upstream_prompt_identity = _prompt_identity_sha256(
         upstream_sample_manifest
     )
@@ -137,15 +238,25 @@ def main() -> None:
             "Connected evaluation requires upstream/downstream rankings "
             "from the same frozen shared-prompt manifest."
         )
-    upstream_circuit_path = (
+    upstream_circuit_path = args.upstream_circuit_path or (
         upstream_root
-        / "circuits_nested"
+        / "circuits_source_to_sink"
         / f"eapig_top_{args.upstream_k}.json"
     )
-    downstream_circuit_path = (
+    downstream_circuit_path = args.downstream_circuit_path or (
         downstream_root
-        / "circuits_nested"
+        / "circuits_source_to_sink"
         / f"steering_path_eapig_top_{args.downstream_k}.json"
+    )
+    upstream_circuit_path = (
+        upstream_circuit_path
+        if upstream_circuit_path.is_absolute()
+        else ROOT / upstream_circuit_path
+    )
+    downstream_circuit_path = (
+        downstream_circuit_path
+        if downstream_circuit_path.is_absolute()
+        else ROOT / downstream_circuit_path
     )
     upstream_payload = json.loads(
         upstream_circuit_path.read_text(encoding="utf-8")
@@ -192,17 +303,31 @@ def main() -> None:
         dtype=args.dtype,
         revision=model_cfg.get("revision"),
     )
+    observed_architecture = validate_model_architecture(
+        model, config["model_architecture"]
+    )
     model.set_ungroup_grouped_query_attention(True)
     layer = int(config["vector"]["hf_hidden_state_index"])
     target_hook = config["vector"]["transformer_lens_target_hook"]
     upstream_graph = make_projection_graph(model, layer)
     downstream_graph = make_steering_to_logits_graph(model, layer)
-    set_selected_edges(
-        upstream_graph, load_circuit_edge_names(upstream_circuit_path)
+    upstream_edge_names = load_circuit_edge_names(upstream_circuit_path)
+    downstream_edge_names = load_circuit_edge_names(downstream_circuit_path)
+    upstream_connectivity = circuit_connectivity(
+        upstream_graph, upstream_edge_names
     )
-    set_selected_edges(
-        downstream_graph, load_circuit_edge_names(downstream_circuit_path)
+    downstream_connectivity = circuit_connectivity(
+        downstream_graph, downstream_edge_names
     )
+    validate_intervention_connectivity(
+        {
+            "upstream": upstream_connectivity,
+            "downstream": downstream_connectivity,
+        },
+        require_source_to_sink=args.condition == "both_circuit_only",
+    )
+    set_selected_edges(upstream_graph, upstream_edge_names)
+    set_selected_edges(downstream_graph, downstream_edge_names)
     if not model.cfg.use_attn_result:
         raise RuntimeError(
             "Connected-circuit evaluation requires TransformerLens' reference "
@@ -211,6 +336,15 @@ def main() -> None:
 
     # Use the trait-specific unit vector so the connected-circuit test is trait-agnostic.
     unit_path = result_root / f"vector/{trait_slug}_direction.pt"
+    unit_sha256 = sha256_file(unit_path)
+    if (
+        upstream_metadata.get("direction")
+        != str(unit_path.relative_to(ROOT))
+        or upstream_metadata.get("direction_sha256") != unit_sha256
+    ):
+        raise ValueError(
+            "Connected upstream discovery used a different persona direction."
+        )
     unit_direction = torch.load(
         unit_path,
         map_location=next(model.parameters()).device,
@@ -219,6 +353,17 @@ def main() -> None:
     unit_direction = unit_direction / unit_direction.norm().clamp_min(1e-8)
     # Use the trait-specific response-average vector for the rescue/ablation geometry.
     raw_path_vector = result_root / f"vector/{trait_slug}_response_avg_diff.pt"
+    raw_vector_sha256 = sha256_file(raw_path_vector)
+    downstream_steering = downstream_metadata.get("steering", {})
+    if (
+        downstream_steering.get("vector")
+        != str(raw_path_vector.relative_to(ROOT))
+        or downstream_steering.get("vector_sha256")
+        != raw_vector_sha256
+    ):
+        raise ValueError(
+            "Connected downstream discovery used a different response vector."
+        )
     raw_stack = torch.load(
         raw_path_vector,
         map_location=next(model.parameters()).device,
@@ -228,12 +373,52 @@ def main() -> None:
     corrupt_coefficient = float(
         downstream_metadata["steering"]["corrupt_coefficient"]
     )
-    generator = torch.Generator(device="cpu").manual_seed(0)
+    generator = torch.Generator(device="cpu").manual_seed(args.orthogonal_seed)
     orthogonal = torch.randn(
         unit_direction.shape, generator=generator, dtype=torch.float32
     ).to(unit_direction.device)
     orthogonal = orthogonal - orthogonal.dot(unit_direction) * unit_direction
     orthogonal = orthogonal / orthogonal.norm().clamp_min(1e-8)
+    unrelated_path = None
+    unrelated_direction = None
+    unrelated_raw_cosine = None
+    if args.condition == "upstream_unrelated_vector_rescue":
+        if args.unrelated_vector_path is None:
+            raise ValueError(
+                "--unrelated-vector-path is required for the unrelated rescue."
+            )
+        unrelated_path = (
+            args.unrelated_vector_path
+            if args.unrelated_vector_path.is_absolute()
+            else ROOT / args.unrelated_vector_path
+        )
+        unrelated_stack = torch.load(
+            unrelated_path,
+            map_location=unit_direction.device,
+            weights_only=True,
+        ).float()
+        unrelated_direction = (
+            unrelated_stack[layer]
+            if unrelated_stack.ndim == 2
+            else unrelated_stack
+        )
+        if unrelated_direction.shape != unit_direction.shape:
+            raise ValueError("Unrelated vector has the wrong hidden dimension.")
+        unrelated_direction = unrelated_direction / unrelated_direction.norm().clamp_min(
+            1e-8
+        )
+        unrelated_raw_cosine = float(
+            unrelated_direction.dot(unit_direction).item()
+        )
+        unrelated_direction = (
+            unrelated_direction
+            - unrelated_direction.dot(unit_direction) * unit_direction
+        )
+        if unrelated_direction.norm() <= 1e-6:
+            raise ValueError(
+                "Unrelated vector is collinear with the target persona vector."
+            )
+        unrelated_direction = unrelated_direction / unrelated_direction.norm()
 
     designed = []
     for question_index in args.question_indices:
@@ -270,10 +455,12 @@ def main() -> None:
             negative_prompt_candidate, add_special_tokens=False
         )
         # Connected-circuit validation uses the same token-alignment rule so
-        # the method stays identical while incompatible prompt pairs are
-        # dropped before attribution.
+        # the method stays identical. Never silently change the requested set.
         if len(negative_ids) > len(positive_ids):
-            continue
+            raise ValueError(
+                f"Question {question_index} cannot be token-aligned: the "
+                "negative prompt is longer than the positive prompt."
+            )
         negative_prompt, alignment = _align_negative_prompt(
             model.tokenizer,
             question=questions[question_index],
@@ -281,6 +468,11 @@ def main() -> None:
             negative_instruction=instruction["neg"],
             positive_prompt=positive_prompt,
         )
+        if alignment["positive_tokens"] > args.max_length:
+            raise ValueError(
+                f"Question {question_index} exceeds --max-length; refusing "
+                "to truncate a connected-circuit prompt."
+            )
         designed.append(
             {
                 "question_id": f"{trait_slug}_{question_index}",
@@ -300,15 +492,45 @@ def main() -> None:
     if len(rows_by_id) != len(existing_rows):
         raise ValueError("Duplicate output record IDs.")
 
-    def capture_target(tokens, mask) -> torch.Tensor:
+    def capture_target(
+        tokens,
+        mask,
+        *,
+        position: int,
+        fwd_hooks=(),
+    ) -> torch.Tensor:
         captured: dict[str, torch.Tensor] = {}
 
         def hook(activations: torch.Tensor, hook):
             del hook
-            captured["value"] = activations[:, -1, :].detach().clone()
+            captured["value"] = activations[:, position, :].detach().clone()
             return activations
 
-        with torch.inference_mode(), model.hooks(fwd_hooks=[(target_hook, hook)]):
+        with torch.inference_mode(), model.hooks(
+            fwd_hooks=[*fwd_hooks, (target_hook, hook)]
+        ):
+            model(tokens, attention_mask=mask)
+        return captured["value"]
+
+    def capture_prefix_interface(
+        tokens,
+        mask,
+        *,
+        prefix_length: int,
+        fwd_hooks=(),
+    ) -> torch.Tensor:
+        captured: dict[str, torch.Tensor] = {}
+
+        def hook(activations: torch.Tensor, hook):
+            del hook
+            captured["value"] = (
+                activations[:, :prefix_length, :].detach().clone()
+            )
+            return activations
+
+        with torch.inference_mode(), model.hooks(
+            fwd_hooks=[*fwd_hooks, (target_hook, hook)]
+        ):
             model(tokens, attention_mask=mask)
         return captured["value"]
 
@@ -343,6 +565,9 @@ def main() -> None:
         circuit_only: bool = False,
         rescue: str | None,
         clean_reference: torch.Tensor | None,
+        target_position: int,
+        prefix_length: int,
+        position_mask: torch.Tensor | None,
     ):
         mixed_cache: dict[str, torch.Tensor] = {}
         hooks = (
@@ -367,6 +592,7 @@ def main() -> None:
                 corrupt_cache,
                 mixed_cache,
                 patch_selected=True,
+                position_mask=position_mask,
             )
         )
         if rescue is not None:
@@ -375,12 +601,19 @@ def main() -> None:
 
             def rescue_hook(activations: torch.Tensor, hook):
                 del hook
-                current = activations[:, -1, :]
+                current = activations[:, target_position, :]
                 reference = clean_reference.to(
                     device=current.device, dtype=current.dtype
                 )
+                if rescue == "full_prefix":
+                    if reference.ndim != 3 or reference.shape[1] != prefix_length:
+                        raise ValueError(
+                            "Full-prefix rescue reference has the wrong shape."
+                        )
+                    activations[:, :prefix_length, :] = reference
+                    return activations
                 if rescue == "full":
-                    activations[:, -1, :] = reference
+                    activations[:, target_position, :] = reference
                     return activations
                 direction = unit_direction.to(
                     device=current.device, dtype=current.dtype
@@ -388,14 +621,23 @@ def main() -> None:
                 missing = ((reference - current) * direction).sum(
                     dim=-1, keepdim=True
                 )
-                rescue_direction = (
-                    direction
-                    if rescue == "vector"
-                    else orthogonal.to(
+                if rescue == "vector":
+                    rescue_direction = direction
+                elif rescue == "unrelated":
+                    if unrelated_direction is None:
+                        raise RuntimeError("Unrelated rescue vector was not loaded.")
+                    rescue_direction = unrelated_direction.to(
                         device=current.device, dtype=current.dtype
                     )
+                elif rescue == "orthogonal":
+                    rescue_direction = orthogonal.to(
+                        device=current.device, dtype=current.dtype
+                    )
+                else:
+                    raise ValueError(f"Unknown rescue mode: {rescue}")
+                activations[:, target_position, :] = (
+                    current + missing * rescue_direction
                 )
-                activations[:, -1, :] = current + missing * rescue_direction
                 return activations
 
             hooks.append((target_hook, rescue_hook))
@@ -411,7 +653,30 @@ def main() -> None:
         downstream_circuit_only: bool = False,
         rescue: str | None,
         clean_reference: torch.Tensor | None,
+        target_position: int,
+        prefix_length: int,
+        upstream_position_mask: torch.Tensor | None,
+        downstream_estimand: str,
+        apply_upstream_intervention: bool,
     ) -> torch.Tensor:
+        if downstream_estimand not in {
+            "negative_steering",
+            "rescue_effect_blocking",
+        }:
+            raise ValueError(
+                f"Unknown downstream estimand: {downstream_estimand}"
+            )
+        if downstream_estimand == "rescue_effect_blocking":
+            if rescue != "vector":
+                raise ValueError(
+                    "Rescue-effect blocking requires a vector-rescued clean run."
+                )
+            if downstream_circuit_only:
+                raise ValueError(
+                    "Rescue-effect blocking is a selected-edge ablation, not a "
+                    "circuit-only reconstruction."
+                )
+
         downstream_corrupt: dict[str, torch.Tensor] = {}
 
         def corrupt_transform(name: str, activations: torch.Tensor):
@@ -423,31 +688,48 @@ def main() -> None:
             )
             return changed
 
-        corrupt_hooks = upstream_hooks(
-            u_corrupt,
-            corrupt_receivers=u_corrupt_receivers,
-            circuit_only=upstream_circuit_only,
-            rescue=rescue,
-            clean_reference=clean_reference,
+        corrupt_rescue = (
+            rescue
+            if downstream_estimand == "negative_steering"
+            else None
+        )
+        corrupt_hooks = (
+            upstream_hooks(
+                u_corrupt,
+                corrupt_receivers=u_corrupt_receivers,
+                circuit_only=upstream_circuit_only,
+                rescue=corrupt_rescue,
+                clean_reference=clean_reference,
+                target_position=target_position,
+                prefix_length=prefix_length,
+                position_mask=upstream_position_mask,
+            )
+            if apply_upstream_intervention
+            else []
         )
         corrupt_hooks += _source_cache_hooks(
             model,
             downstream_graph,
             downstream_corrupt,
-            cache_transform=corrupt_transform,
+            cache_transform=(
+                corrupt_transform
+                if downstream_estimand == "negative_steering"
+                else None
+            ),
             selected_only=True,
             storage_dtype=compact_dtype,
         )
-        corrupt_hooks.append(
-            (
-                target_hook,
-                activation_addition_hook(
-                    raw_direction,
-                    coefficient=corrupt_coefficient,
-                    position=-1,
-                ),
+        if downstream_estimand == "negative_steering":
+            corrupt_hooks.append(
+                (
+                    target_hook,
+                    activation_addition_hook(
+                        raw_direction,
+                        coefficient=corrupt_coefficient,
+                        position=-1,
+                    ),
+                )
             )
-        )
         downstream_corrupt_receivers = {}
         if downstream_circuit_only:
             corrupt_hooks += _receiver_cache_hooks(
@@ -459,12 +741,19 @@ def main() -> None:
             model(clean_tokens, attention_mask=clean_mask)
 
         downstream_clean: dict[str, torch.Tensor] = {}
-        final_hooks = upstream_hooks(
-            u_corrupt,
-            corrupt_receivers=u_corrupt_receivers,
-            circuit_only=upstream_circuit_only,
-            rescue=rescue,
-            clean_reference=clean_reference,
+        final_hooks = (
+            upstream_hooks(
+                u_corrupt,
+                corrupt_receivers=u_corrupt_receivers,
+                circuit_only=upstream_circuit_only,
+                rescue=rescue,
+                clean_reference=clean_reference,
+                target_position=target_position,
+                prefix_length=prefix_length,
+                position_mask=upstream_position_mask,
+            )
+            if apply_upstream_intervention
+            else []
         )
         final_hooks += _source_cache_hooks(
             model,
@@ -493,16 +782,57 @@ def main() -> None:
 
     def save_metadata(status: str) -> None:
         rows = read_jsonl(raw_path) if raw_path.exists() else []
+        downstream_estimand = _downstream_estimand(args.condition)
+        applies_upstream = _uses_upstream_intervention(args.condition)
+        downstream_counterfactual = {
+            "estimand": downstream_estimand,
+            "conditional_on_upstream_intervention": applies_upstream,
+        }
+        if downstream_estimand == "negative_steering":
+            downstream_counterfactual.update(
+                {
+                    "intervention": "signed response-time vector subtraction",
+                    "coefficient": corrupt_coefficient,
+                    "clean_run": "same upstream intervention and interface rescue",
+                    "corrupt_run": (
+                        "same upstream intervention and interface rescue plus "
+                        "negative steering"
+                    ),
+                }
+            )
+        elif downstream_estimand == "rescue_effect_blocking":
+            downstream_counterfactual.update(
+                {
+                    "intervention": (
+                        "patch selected downstream edges from the unrescued "
+                        "upstream-cut run into the vector-rescued upstream-cut run"
+                    ),
+                    "coefficient": None,
+                    "clean_run": "upstream cut plus vector rescue",
+                    "corrupt_run": "same upstream cut without interface rescue",
+                    "negative_steering_used": False,
+                }
+            )
+        else:
+            downstream_counterfactual.update(
+                {
+                    "intervention": None,
+                    "coefficient": None,
+                    "clean_run": None,
+                    "corrupt_run": None,
+                }
+            )
         write_json(
             metadata_path,
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "status": status,
                 "method": "connected formation-expression causal intervention",
                 "claim_scope": "development vector mediation and circuit composition",
                 "behavior_protocol_id": config["protocol_id"],
                 "condition": args.condition,
                 "model": model_cfg,
+                "model_architecture": observed_architecture,
                 "upstream_run": args.upstream_run,
                 "downstream_run": args.downstream_run,
                 "upstream_k": args.upstream_k,
@@ -517,6 +847,34 @@ def main() -> None:
                 "downstream_circuit_sha256": sha256_file(
                     downstream_circuit_path
                 ),
+                "direction": str(unit_path.relative_to(ROOT)),
+                "direction_sha256": unit_sha256,
+                "response_vector": str(raw_path_vector.relative_to(ROOT)),
+                "response_vector_sha256": raw_vector_sha256,
+                "unrelated_vector": (
+                    str(unrelated_path.relative_to(ROOT))
+                    if unrelated_path is not None
+                    else None
+                ),
+                "unrelated_vector_sha256": (
+                    sha256_file(unrelated_path)
+                    if unrelated_path is not None
+                    else None
+                ),
+                "unrelated_vector_cosine": (
+                    float(unrelated_direction.dot(unit_direction).item())
+                    if unrelated_direction is not None
+                    else None
+                ),
+                "unrelated_vector_raw_cosine": unrelated_raw_cosine,
+                "unrelated_vector_control": (
+                    "target-orthogonalized equal-norm semantic vector"
+                    if unrelated_direction is not None
+                    else None
+                ),
+                "orthogonal_seed": args.orthogonal_seed,
+                "upstream_connectivity": upstream_connectivity,
+                "downstream_connectivity": downstream_connectivity,
                 "shared_prompt_identity_sha256": upstream_prompt_identity,
                 "upstream_sample_manifest_sha256": upstream_metadata.get(
                     "sample_manifest_sha256"
@@ -524,23 +882,35 @@ def main() -> None:
                 "downstream_sample_manifest_sha256": downstream_metadata.get(
                     "sample_manifest_sha256"
                 ),
-                "upstream_counterfactual": "token-aligned negative-persona prompt",
-                "downstream_counterfactual": {
-                    "intervention": "signed response-time vector subtraction",
-                    "coefficient": corrupt_coefficient,
-                    "conditional_on_upstream_and_rescue": True,
-                },
+                "upstream_counterfactual": (
+                    "token-aligned negative-persona prompt"
+                    if applies_upstream
+                    else None
+                ),
+                "upstream_intervention_applied": applies_upstream,
+                "upstream_position_scope": args.upstream_position_scope,
+                "downstream_estimand": downstream_estimand,
+                "downstream_counterfactual": downstream_counterfactual,
                 "interface": {
                     "hook": target_hook,
                     "layer": layer,
-                    "position": "current next-token predictor",
+                    "timing": args.interface_timing,
+                    "position": (
+                        "fixed final prompt token"
+                        if args.interface_timing == "prompt_end"
+                        else "current next-token predictor"
+                    ),
                 },
+                "interface_timing": args.interface_timing,
                 "question_indices": args.question_indices,
                 "output_tag": args.output_tag,
                 "decoding": {
                     "do_sample": False,
                     "max_new_tokens": args.max_new_tokens,
+                    "backend": "full_prefix_forward_ungrouped_gqa",
                 },
+                "generation_backend": "full_prefix_forward_ungrouped_gqa",
+                "max_length": args.max_length,
                 "responses": len(rows),
                 "memory_implementation": {
                     "attention_result_sources": (
@@ -568,6 +938,74 @@ def main() -> None:
             },
         )
 
+    expected_resume = {
+        "behavior_protocol_id": config["protocol_id"],
+        "condition": args.condition,
+        "model": model_cfg,
+        "model_architecture": observed_architecture,
+        "upstream_run": args.upstream_run,
+        "downstream_run": args.downstream_run,
+        "upstream_k": args.upstream_k,
+        "downstream_k": args.downstream_k,
+        "upstream_circuit_sha256": sha256_file(upstream_circuit_path),
+        "downstream_circuit_sha256": sha256_file(downstream_circuit_path),
+        "direction_sha256": unit_sha256,
+        "response_vector_sha256": raw_vector_sha256,
+        "unrelated_vector_sha256": (
+            sha256_file(unrelated_path) if unrelated_path is not None else None
+        ),
+        "orthogonal_seed": args.orthogonal_seed,
+        "upstream_position_scope": args.upstream_position_scope,
+        "upstream_intervention_applied": _uses_upstream_intervention(
+            args.condition
+        ),
+        "downstream_estimand": _downstream_estimand(args.condition),
+        "interface": {
+            "hook": target_hook,
+            "layer": layer,
+            "timing": args.interface_timing,
+            "position": (
+                "fixed final prompt token"
+                if args.interface_timing == "prompt_end"
+                else "current next-token predictor"
+            ),
+        },
+        "interface_timing": args.interface_timing,
+        "question_indices": args.question_indices,
+        "decoding": {
+            "do_sample": False,
+            "max_new_tokens": args.max_new_tokens,
+            "backend": "full_prefix_forward_ungrouped_gqa",
+        },
+        "max_length": args.max_length,
+    }
+    if args.resume:
+        if not metadata_path.exists():
+            raise ValueError("Cannot resume without the original metadata.json.")
+        previous = json.loads(metadata_path.read_text(encoding="utf-8"))
+        mismatched = [
+            key
+            for key, value in expected_resume.items()
+            if previous.get(key) != value
+        ]
+        if mismatched:
+            raise ValueError(
+                f"Resume arguments differ from the original run: {mismatched}"
+            )
+
+    expected_ids = {
+        (
+            f"connected-ku{args.upstream_k}-kd{args.downstream_k}-"
+            f"{args.condition}-q{source['question_index']:02d}"
+        )
+        for source in designed
+    }
+    unexpected_ids = set(rows_by_id) - expected_ids
+    if unexpected_ids:
+        raise ValueError(
+            f"Resume artifact contains unexpected records: {sorted(unexpected_ids)[:3]}"
+        )
+
     save_metadata("running")
     for source in tqdm(designed, desc=args.condition):
         record_id = (
@@ -582,6 +1020,7 @@ def main() -> None:
         corrupt_tokens, corrupt_mask = tokenize_prompts(
             model, [source["negative_prompt"]], max_length=args.max_length
         )
+        prompt_end_position = clean_tokens.shape[1] - 1
         generated: list[int] = []
         eos_id = model.tokenizer.eos_token_id
         rescue = (
@@ -593,31 +1032,217 @@ def main() -> None:
             }
             else "full"
             if args.condition == "upstream_full_state_rescue"
+            else "full_prefix"
+            if args.condition == "upstream_full_prefix_state_rescue"
             else "orthogonal"
             if args.condition == "upstream_orthogonal_rescue"
+            else "unrelated"
+            if args.condition == "upstream_unrelated_vector_rescue"
             else None
         )
         union_circuit_only = args.condition == "both_circuit_only"
+        apply_upstream_intervention = _uses_upstream_intervention(
+            args.condition
+        )
         downstream_ablated = args.condition in {
+            "downstream_ablated",
             "both_ablated",
             "both_circuit_only",
             "vector_rescue_downstream_ablated",
+        }
+        downstream_estimand = _downstream_estimand(args.condition)
+        initial_target_position = (
+            prompt_end_position
+            if args.interface_timing == "prompt_end"
+            else -1
+        )
+        initial_position_mask = None
+        if args.upstream_position_scope == "prompt_only":
+            initial_position_mask = torch.ones_like(clean_mask, dtype=torch.bool)
+        if apply_upstream_intervention:
+            initial_corrupt, initial_corrupt_receivers = (
+                upstream_corrupt_cache(
+                    corrupt_tokens,
+                    corrupt_mask,
+                    circuit_only=union_circuit_only,
+                )
+            )
+        else:
+            initial_corrupt, initial_corrupt_receivers = {}, {}
+        initial_clean_state = capture_target(
+            clean_tokens,
+            clean_mask,
+            position=initial_target_position,
+        )
+        initial_clean_reference = (
+            capture_prefix_interface(
+                clean_tokens,
+                clean_mask,
+                prefix_length=clean_tokens.shape[1],
+            )
+            if rescue == "full_prefix"
+            else initial_clean_state
+        )
+        initial_ablated_hooks = (
+            upstream_hooks(
+                initial_corrupt,
+                corrupt_receivers=initial_corrupt_receivers,
+                circuit_only=union_circuit_only,
+                rescue=None,
+                clean_reference=None,
+                target_position=initial_target_position,
+                prefix_length=clean_tokens.shape[1],
+                position_mask=initial_position_mask,
+            )
+            if apply_upstream_intervention
+            else []
+        )
+        initial_ablated_state = capture_target(
+            clean_tokens,
+            clean_mask,
+            position=initial_target_position,
+            fwd_hooks=initial_ablated_hooks,
+        )
+        initial_ablated_prefix_state = (
+            capture_prefix_interface(
+                clean_tokens,
+                clean_mask,
+                prefix_length=clean_tokens.shape[1],
+                fwd_hooks=initial_ablated_hooks,
+            )
+            if rescue == "full_prefix"
+            else None
+        )
+        initial_rescued_state = None
+        initial_rescued_prefix_state = None
+        if rescue is not None:
+            initial_rescue_hooks = upstream_hooks(
+                initial_corrupt,
+                corrupt_receivers=initial_corrupt_receivers,
+                circuit_only=union_circuit_only,
+                rescue=rescue,
+                clean_reference=initial_clean_reference,
+                target_position=initial_target_position,
+                prefix_length=clean_tokens.shape[1],
+                position_mask=initial_position_mask,
+            )
+            initial_rescued_state = capture_target(
+                clean_tokens,
+                clean_mask,
+                position=initial_target_position,
+                fwd_hooks=initial_rescue_hooks,
+            )
+            if rescue == "full_prefix":
+                initial_rescued_prefix_state = capture_prefix_interface(
+                    clean_tokens,
+                    clean_mask,
+                    prefix_length=clean_tokens.shape[1],
+                    fwd_hooks=initial_rescue_hooks,
+                )
+
+        def target_coordinate(state: torch.Tensor) -> float:
+            direction = unit_direction.to(device=state.device).float()
+            return float((state.float() * direction).sum(dim=-1).item())
+
+        initial_interface = {
+            "position": initial_target_position,
+            "clean_target_coordinate": target_coordinate(initial_clean_state),
+            "upstream_intervened_target_coordinate": target_coordinate(
+                initial_ablated_state
+            ),
+            "missing_target_coordinate": target_coordinate(
+                initial_clean_state
+            )
+            - target_coordinate(initial_ablated_state),
+            "state_l2_distance_to_clean": float(
+                (
+                    initial_clean_state.float()
+                    - initial_ablated_state.float()
+                )
+                .norm(dim=-1)
+                .item()
+            ),
+            "rescued_target_coordinate": (
+                target_coordinate(initial_rescued_state)
+                if initial_rescued_state is not None
+                else None
+            ),
+            "rescued_state_l2_distance_to_clean": (
+                float(
+                    (
+                        initial_clean_state.float()
+                        - initial_rescued_state.float()
+                    )
+                    .norm(dim=-1)
+                    .item()
+                )
+                if initial_rescued_state is not None
+                else None
+            ),
+            "prefix_state_l2_distance_to_clean": (
+                float(
+                    (
+                        initial_clean_reference.float()
+                        - initial_ablated_prefix_state.float()
+                    )
+                    .norm()
+                    .item()
+                )
+                if initial_ablated_prefix_state is not None
+                else None
+            ),
+            "rescued_prefix_state_l2_distance_to_clean": (
+                float(
+                    (
+                        initial_clean_reference.float()
+                        - initial_rescued_prefix_state.float()
+                    )
+                    .norm()
+                    .item()
+                )
+                if initial_rescued_prefix_state is not None
+                else None
+            ),
         }
         for _ in tqdm(
             range(args.max_new_tokens),
             desc=f"{args.condition}-q{source['question_index']:02d}",
             leave=False,
         ):
-            u_corrupt, u_corrupt_receivers = upstream_corrupt_cache(
-                corrupt_tokens,
-                corrupt_mask,
-                circuit_only=union_circuit_only,
+            if apply_upstream_intervention:
+                u_corrupt, u_corrupt_receivers = upstream_corrupt_cache(
+                    corrupt_tokens,
+                    corrupt_mask,
+                    circuit_only=union_circuit_only,
+                )
+            else:
+                u_corrupt, u_corrupt_receivers = {}, {}
+            target_position = (
+                prompt_end_position
+                if args.interface_timing == "prompt_end"
+                else -1
             )
-            clean_reference = (
-                capture_target(clean_tokens, clean_mask)
-                if rescue is not None
-                else None
-            )
+            upstream_position_mask = None
+            if args.upstream_position_scope == "prompt_only":
+                positions = torch.arange(
+                    clean_tokens.shape[1], device=clean_tokens.device
+                )
+                upstream_position_mask = (
+                    positions <= prompt_end_position
+                ).unsqueeze(0)
+            clean_reference = None
+            if rescue == "full_prefix":
+                clean_reference = capture_prefix_interface(
+                    clean_tokens,
+                    clean_mask,
+                    prefix_length=clean_tokens.shape[1],
+                )
+            elif rescue is not None:
+                clean_reference = capture_target(
+                    clean_tokens,
+                    clean_mask,
+                    position=target_position,
+                )
             if downstream_ablated:
                 logits = conditional_downstream_logits(
                     clean_tokens,
@@ -628,14 +1253,26 @@ def main() -> None:
                     downstream_circuit_only=union_circuit_only,
                     rescue=rescue,
                     clean_reference=clean_reference,
+                    target_position=target_position,
+                    prefix_length=clean_tokens.shape[1],
+                    upstream_position_mask=upstream_position_mask,
+                    downstream_estimand=downstream_estimand,
+                    apply_upstream_intervention=apply_upstream_intervention,
                 )
             else:
-                hooks = upstream_hooks(
-                    u_corrupt,
-                    corrupt_receivers=u_corrupt_receivers,
-                    circuit_only=False,
-                    rescue=rescue,
-                    clean_reference=clean_reference,
+                hooks = (
+                    upstream_hooks(
+                        u_corrupt,
+                        corrupt_receivers=u_corrupt_receivers,
+                        circuit_only=False,
+                        rescue=rescue,
+                        clean_reference=clean_reference,
+                        target_position=target_position,
+                        prefix_length=clean_tokens.shape[1],
+                        position_mask=upstream_position_mask,
+                    )
+                    if apply_upstream_intervention
+                    else []
                 )
                 with torch.inference_mode(), model.hooks(fwd_hooks=hooks):
                     logits = model(
@@ -673,7 +1310,7 @@ def main() -> None:
                 for key, value in source.items()
                 if key != "negative_prompt"
             },
-            "schema_version": 1,
+            "schema_version": 2,
             "record_id": record_id,
             "behavior_protocol_id": config["protocol_id"],
             "trait": config["trait"]["name"],
@@ -682,10 +1319,17 @@ def main() -> None:
             "condition": args.condition,
             "upstream_k": args.upstream_k,
             "downstream_k": args.downstream_k,
+            "upstream_position_scope": args.upstream_position_scope,
+            "upstream_intervention_applied": apply_upstream_intervention,
+            "interface_timing": args.interface_timing,
+            "downstream_estimand": downstream_estimand,
+            "orthogonal_seed": args.orthogonal_seed,
+            "initial_interface_diagnostic": initial_interface,
             "answer": model.tokenizer.decode(
                 generated, skip_special_tokens=True
             ),
             "generated_token_count": len(generated),
+            "generated_token_ids_sha256": token_ids_sha256(generated),
             "hit_max_new_tokens": len(generated) >= args.max_new_tokens,
             "decoding": "greedy",
         }

@@ -257,6 +257,13 @@ def main() -> None:
         help="Frozen shared upstream/downstream discovery sample manifest.",
     )
     parser.add_argument("--num-pairs", type=int, default=64)
+    parser.add_argument(
+        "--manifest-sample-indices",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Optional frozen-manifest subset for an IG convergence pilot.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--max-length", type=int, default=256)
@@ -275,13 +282,14 @@ def main() -> None:
         attribute_contrastive_prompt_projection,
     )
     from refusal_circuit.graph import (
+        circuit_connectivity,
         edge_record,
         make_projection_graph,
         paper_greedy_edges,
         write_edge_scores_parquet,
         write_top_edges_summary,
     )
-    from refusal_circuit.model import load_model
+    from refusal_circuit.model import load_model, validate_model_architecture
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import read_jsonl, sha256_file
 
@@ -333,6 +341,17 @@ def main() -> None:
         ):
             raise ValueError("Shared sample manifest failed its provenance gate.")
         samples = sample_manifest["discovery"]["samples"]
+        if args.manifest_sample_indices is not None:
+            if len(args.manifest_sample_indices) != len(
+                set(args.manifest_sample_indices)
+            ):
+                raise ValueError("Manifest sample indices must be unique.")
+            if any(
+                index < 0 or index >= len(samples)
+                for index in args.manifest_sample_indices
+            ):
+                raise IndexError("Manifest sample index is out of range.")
+            samples = [samples[index] for index in args.manifest_sample_indices]
         if len(samples) != args.num_pairs:
             raise ValueError(
                 f"Manifest has {len(samples)} discovery prompts, "
@@ -380,6 +399,9 @@ def main() -> None:
         device=args.device,
         dtype=args.dtype,
         revision=model_cfg.get("revision"),
+    )
+    observed_architecture = validate_model_architecture(
+        model, config["model_architecture"]
     )
     for row in selected:
         question_index = row["question_index"]
@@ -435,18 +457,29 @@ def main() -> None:
         method="upstream_contrastive_eapig",
     )
     selected_edges = paper_greedy_edges(
-        graph, min(args.k, len(graph.edges)), prune_parentless=False
+        graph, min(args.k, len(graph.edges)), prune_parentless=True
     )
-    circuit_path = output / "circuits_nested" / f"eapig_top_{args.k}.json"
+    connected_diagnostics = graph.last_selection_diagnostics
+    circuit_path = (
+        output / "circuits_source_to_sink" / f"eapig_top_{args.k}.json"
+    )
     write_json(
         circuit_path,
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "method": "contrastive_state_path_eapig",
-            "selection": "paper_greedy_absolute_score_with_childless_pruning_only",
-            "claim_scope": "upstream natural persona-state formation candidate",
+            "selection": "paper_greedy_absolute_score_with_recursive_source_sink_pruning",
+            "circuit_family": "source_to_sink",
+            "claim_scope": (
+                "upstream natural persona-state formation circuit candidate; "
+                "all retained edges lie on complete source-to-interface paths"
+            ),
             "requested_k": args.k,
             "retained_edges": len(selected_edges),
+            "selection_diagnostics": connected_diagnostics,
+            "connectivity": circuit_connectivity(
+                graph, {edge.name for edge in selected_edges}
+            ),
             "score_source": str(score_path.relative_to(ROOT)),
             "target": {
                 "hook": target_hook,
@@ -456,6 +489,39 @@ def main() -> None:
                 "metric": f"signed_projection_onto_unit_{trait_slug}_direction",
             },
             "edges": [edge_record(edge) for edge in selected_edges],
+        },
+    )
+    cut_edges = paper_greedy_edges(
+        graph, min(args.k, len(graph.edges)), prune_parentless=False
+    )
+    cut_diagnostics = graph.last_selection_diagnostics
+    cut_path = output / "circuits_cut_sets" / f"eapig_top_{args.k}.json"
+    write_json(
+        cut_path,
+        {
+            "schema_version": 2,
+            "method": "contrastive_state_path_eapig",
+            "selection": "paper_greedy_absolute_score_with_sink_pruning_only",
+            "circuit_family": "causal_cut",
+            "claim_scope": (
+                "upstream causal interception set for necessity tests; "
+                "not a reconstructive source-to-interface circuit"
+            ),
+            "requested_k": args.k,
+            "retained_edges": len(cut_edges),
+            "selection_diagnostics": cut_diagnostics,
+            "connectivity": circuit_connectivity(
+                graph, {edge.name for edge in cut_edges}
+            ),
+            "score_source": str(score_path.relative_to(ROOT)),
+            "target": {
+                "hook": target_hook,
+                "layer": target_layer,
+                "position": -1,
+                "timing": "final prompt token before response generation",
+                "metric": f"signed_projection_onto_unit_{trait_slug}_direction",
+            },
+            "edges": [edge_record(edge) for edge in cut_edges],
         },
     )
     metadata = {
@@ -485,6 +551,7 @@ def main() -> None:
         ),
         "diagnostics": diagnostics,
         "model": model_cfg,
+        "model_architecture": observed_architecture,
         "trait": config["trait"]["name"],
         "sources": {
             "positive": str(positive_path.relative_to(ROOT)),
@@ -498,6 +565,7 @@ def main() -> None:
             "method": selection_method,
             "seed": args.seed,
             "n_pairs": len(selected),
+            "manifest_sample_indices": args.manifest_sample_indices,
             "prompt_pairs": [
                 {
                     **{
@@ -533,8 +601,12 @@ def main() -> None:
         "score_sha256": sha256_file(score_path),
         "circuit": str(circuit_path.relative_to(ROOT)),
         "circuit_sha256": sha256_file(circuit_path),
+        "cut_set": str(cut_path.relative_to(ROOT)),
+        "cut_set_sha256": sha256_file(cut_path),
         "requested_k": args.k,
         "retained_edges": len(selected_edges),
+        "cut_set_retained_edges": len(cut_edges),
+        "circuit_family": "source_to_sink",
     }
     if sample_manifest_path is not None:
         metadata["sample_manifest"] = str(

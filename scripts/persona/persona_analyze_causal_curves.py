@@ -29,6 +29,20 @@ def main() -> None:
     parser.add_argument(
         "--question-indices", type=int, nargs="+", default=tuple(range(20))
     )
+    parser.add_argument(
+        "--upstream-circuit-directory", default="circuits_source_to_sink"
+    )
+    parser.add_argument(
+        "--downstream-circuit-directory", default="circuits_source_to_sink"
+    )
+    parser.add_argument(
+        "--upstream-evaluation-template",
+        default="connected_k{k}_n32_prompt_disjoint",
+    )
+    parser.add_argument(
+        "--downstream-evaluation-template",
+        default="connected_k{k}_n32_seed1",
+    )
     parser.add_argument("--minimum-token-cap", type=int, default=640)
     parser.add_argument(
         "--baseline-scored",
@@ -64,21 +78,69 @@ def main() -> None:
         / f"{args.upstream_run}__{args.downstream_run}"
     )
     output = result_root / args.output_name
+    if output.exists() and any(output.iterdir()):
+        raise FileExistsError(
+            f"{output} already contains results; use a new --output-name."
+        )
     output.mkdir(parents=True, exist_ok=True)
     wanted_questions = set(args.question_indices)
     all_upstream_k = list(dict.fromkeys(args.k_values + args.upstream_extra_k_values))
 
+    def metadata_value(metadata: dict, key: str):
+        if key in metadata:
+            return metadata[key]
+        return metadata.get("compatibility", {}).get(key)
+
     def circuit_path(scope: str, k: int) -> Path:
         if scope == "upstream":
-            return upstream_root / "circuits_nested" / f"eapig_top_{k}.json"
+            return (
+                upstream_root
+                / args.upstream_circuit_directory
+                / f"eapig_top_{k}.json"
+            )
         return (
             downstream_root
-            / "circuits_nested"
+            / args.downstream_circuit_directory
             / f"steering_path_eapig_top_{k}.json"
         )
 
     def retained(scope: str, k: int) -> int:
         return int(json.loads(circuit_path(scope, k).read_text())["retained_edges"])
+
+    def validate_scored_artifact(path: Path) -> tuple[dict, dict]:
+        judge_metadata_path = path.with_suffix(".metadata.json")
+        generation_metadata_path = path.with_name("metadata.json")
+        responses_path = path.with_name("responses.jsonl")
+        for required in (
+            judge_metadata_path,
+            generation_metadata_path,
+            responses_path,
+        ):
+            if not required.exists():
+                raise FileNotFoundError(f"Missing scored-artifact provenance: {required}")
+        judge_metadata = json.loads(
+            judge_metadata_path.read_text(encoding="utf-8")
+        )
+        generation_metadata = json.loads(
+            generation_metadata_path.read_text(encoding="utf-8")
+        )
+        if (
+            judge_metadata.get("status") != "complete"
+            or judge_metadata.get("output_sha256") != sha256_file(path)
+            or judge_metadata.get("input_sha256") != sha256_file(responses_path)
+        ):
+            raise ValueError(f"Judged artifact provenance mismatch: {path}")
+        recorded_outputs = {
+            item["path"]: item["sha256"]
+            for item in generation_metadata.get("outputs", [])
+        }
+        if (
+            generation_metadata.get("status") != "complete"
+            or recorded_outputs.get(str(responses_path.relative_to(ROOT)))
+            != sha256_file(responses_path)
+        ):
+            raise ValueError(f"Generation artifact provenance mismatch: {responses_path}")
+        return generation_metadata, judge_metadata
 
     internal_rows = []
     for scope, root, k_values, eligible_key, count_key in (
@@ -92,16 +154,43 @@ def main() -> None:
         ),
     ):
         discovery = json.loads((root / "eapig_run_metadata.json").read_text())
+        if discovery.get("status") != "complete":
+            raise ValueError(f"Incomplete discovery metadata: {root}")
         eligible = int(discovery[eligible_key])
         for k in k_values:
-            path = root / "evaluation" / f"k{k}_n32_seed1/aggregate.json"
+            evaluation_template = (
+                args.upstream_evaluation_template
+                if scope == "upstream"
+                else args.downstream_evaluation_template
+            )
+            path = (
+                root
+                / "evaluation"
+                / evaluation_template.format(k=k)
+                / "aggregate.json"
+            )
             if not path.exists():
                 continue
             row = json.loads(path.read_text())
+            expected_circuit = circuit_path(scope, k)
+            if (
+                row.get("status") != "complete"
+                or int(row.get("requested_k", -1)) != k
+                or row.get("circuit")
+                != str(expected_circuit.relative_to(ROOT))
+                or row.get("circuit_sha256") != sha256_file(expected_circuit)
+                or row.get("truncation") is not False
+            ):
+                raise ValueError(
+                    f"Internal evaluation does not match {scope} k={k} "
+                    f"circuit family: {path}"
+                )
+            circuit_payload = json.loads(expected_circuit.read_text())
             internal_rows.append(
                 {
                     "scope": scope,
                     "k": k,
+                    "circuit_family": circuit_payload.get("circuit_family"),
                     "circuit_edges": retained(scope, k),
                     "eligible_edges": eligible,
                     "edge_fraction": retained(scope, k) / eligible,
@@ -111,12 +200,27 @@ def main() -> None:
                     "corrupt": float(row["means"]["corrupt"]),
                     "circuit_only": float(row["means"]["circuit_only"]),
                     "circuit_ablated": float(row["means"]["circuit_ablated"]),
+                    "max_length": int(row["max_length"]),
+                    "max_observed_tokens": int(row["max_observed_tokens"]),
                     "n": int(row[count_key]),
                     "artifact": str(path.relative_to(ROOT)),
                     "artifact_sha256": sha256_file(path),
                 }
             )
     internal = pd.DataFrame(internal_rows).sort_values(["scope", "k"])
+    internal_numeric = (
+        "edge_fraction",
+        "faithfulness",
+        "necessity",
+        "clean",
+        "corrupt",
+        "circuit_only",
+        "circuit_ablated",
+    )
+    if not np.isfinite(
+        internal[list(internal_numeric)].to_numpy(dtype=float)
+    ).all():
+        raise ValueError("Internal causal curve contains non-finite metrics.")
     expected_internal = {
         *(("upstream", k) for k in all_upstream_k),
         *(("downstream", k) for k in args.k_values),
@@ -125,7 +229,6 @@ def main() -> None:
     missing_internal = sorted(expected_internal - observed_internal)
     if missing_internal:
         raise RuntimeError(f"incomplete internal curve; missing {missing_internal}")
-    internal.to_csv(output / "internal_faithfulness_necessity.csv", index=False)
 
     baseline_path = args.baseline_scored or (
         intermediate / "behavioral_pilot/k3000_n20/scored.jsonl"
@@ -136,12 +239,40 @@ def main() -> None:
             "No judged normal baseline; pass --baseline-scored from any complete "
             "upstream/downstream behavioral artifact."
         )
-    baseline = {
-        int(row["question_index"]): row
-        for row in read_jsonl(baseline_path)
-        if row["condition"] == "normal"
-        and int(row["question_index"]) in wanted_questions
-    }
+    def validate_common_cap(
+        row: dict, metadata: dict, *, artifact: Path
+    ) -> None:
+        decoding = metadata.get("decoding", {})
+        if decoding.get("do_sample") is not False:
+            raise ValueError(
+                f"Only deterministic greedy behavior may be pooled: {artifact}"
+            )
+        source_cap = int(decoding.get("max_new_tokens", 0))
+        if source_cap < args.minimum_token_cap:
+            raise ValueError(
+                f"Behavior cap {source_cap} is below the common cap "
+                f"{args.minimum_token_cap}: {artifact}"
+            )
+        generated = int(row["generated_token_count"])
+        capped = bool(row.get("hit_max_new_tokens", False))
+        if source_cap > args.minimum_token_cap and (
+            generated >= args.minimum_token_cap or capped
+        ):
+            raise ValueError(
+                f"q{row['question_index']} from a larger-cap run did not "
+                f"terminate before the common cap: {artifact}"
+            )
+
+    baseline_metadata, _ = validate_scored_artifact(baseline_path)
+    baseline = {}
+    for row in read_jsonl(baseline_path):
+        question = int(row["question_index"])
+        if row["condition"] != "normal" or question not in wanted_questions:
+            continue
+        validate_common_cap(
+            row, baseline_metadata, artifact=baseline_path
+        )
+        baseline[question] = row
     if set(baseline) != wanted_questions:
         raise ValueError("Frozen normal baseline is incomplete.")
 
@@ -163,13 +294,37 @@ def main() -> None:
             metadata_path = path.with_name("metadata.json")
             if not metadata_path.exists():
                 continue
-            metadata = json.loads(metadata_path.read_text())
+            metadata, _ = validate_scored_artifact(path)
+            expected_circuits = {}
+            if scope == "upstream":
+                expected_circuits = {
+                    "circuit": circuit_path("upstream", upstream_k)
+                }
+            elif scope == "downstream":
+                expected_circuits = {
+                    "circuit": circuit_path("downstream", upstream_k)
+                }
+            else:
+                expected_circuits = {
+                    "upstream_circuit": circuit_path("upstream", upstream_k),
+                    "downstream_circuit": circuit_path(
+                        "downstream", int(downstream_k)
+                    ),
+                }
+            circuit_match = all(
+                metadata_value(metadata, key)
+                == str(expected_path.relative_to(ROOT))
+                and metadata_value(metadata, f"{key}_sha256")
+                == sha256_file(expected_path)
+                for key, expected_path in expected_circuits.items()
+            )
             if (
                 metadata.get("status") == "complete"
                 and int(metadata.get("decoding", {}).get("max_new_tokens", 0))
                 >= args.minimum_token_cap
                 and set(map(int, metadata.get("question_indices", [])))
                 == wanted_questions
+                and circuit_match
             ):
                 accepted.append(path)
         return accepted
@@ -183,6 +338,7 @@ def main() -> None:
         found = {}
         artifacts = []
         for path in complete_scored_paths(scope, upstream_k, downstream_k):
+            metadata, _ = validate_scored_artifact(path)
             rows = [row for row in read_jsonl(path) if row["condition"] == condition]
             if not rows:
                 continue
@@ -191,6 +347,7 @@ def main() -> None:
                 question = int(row["question_index"])
                 if question not in wanted_questions:
                     continue
+                validate_common_cap(row, metadata, artifact=path)
                 if question in found:
                     old = found[question]
                     comparable = ("answer", "trait_score", "coherence_score")
@@ -299,6 +456,20 @@ def main() -> None:
     behavior = pd.DataFrame(behavior_rows).sort_values(
         ["scope", "regime", "circuit_edges"]
     )
+    behavior_numeric = (
+        "normal_trait_mean",
+        "intervened_trait_mean",
+        "normal_minus_intervened_points",
+        "effect_ci_low",
+        "effect_ci_high",
+        "coherence_mean",
+        "generated_tokens_mean",
+        "generated_tokens_max",
+    )
+    if not np.isfinite(
+        behavior[list(behavior_numeric)].to_numpy(dtype=float)
+    ).all():
+        raise ValueError("Behavioral causal curve contains non-finite metrics.")
     expected_behavior = {
         *(("upstream", "necessity", k, 0) for k in args.k_values),
         *(("upstream", "sufficiency", k, 0) for k in args.sufficiency_k_values),
@@ -325,6 +496,9 @@ def main() -> None:
     missing_behavior = sorted(expected_behavior - observed_behavior)
     if missing_behavior:
         raise RuntimeError(f"incomplete behavioral curve; missing {missing_behavior}")
+    internal.to_csv(
+        output / "internal_faithfulness_necessity.csv", index=False
+    )
     behavior.to_csv(output / "behavioral_necessity_sufficiency.csv", index=False)
 
     fig, axes = plt.subplots(2, 2, figsize=(10.2, 7.2))
@@ -358,6 +532,10 @@ def main() -> None:
         "downstream_run": args.downstream_run,
         "question_indices": args.question_indices,
         "minimum_token_cap": args.minimum_token_cap,
+        "upstream_circuit_directory": args.upstream_circuit_directory,
+        "downstream_circuit_directory": args.downstream_circuit_directory,
+        "upstream_evaluation_template": args.upstream_evaluation_template,
+        "downstream_evaluation_template": args.downstream_evaluation_template,
         "k_values": args.k_values,
         "upstream_extra_k_values": args.upstream_extra_k_values,
         "sufficiency_k_values": args.sufficiency_k_values,

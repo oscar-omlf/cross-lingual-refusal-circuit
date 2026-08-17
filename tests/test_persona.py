@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 import json
 import runpy
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,17 +18,25 @@ from refusal_circuit.circuit import (
     _source_cache_hooks,
     _sparse_circuit_only_construction_hooks,
 )
-from refusal_circuit.graph import make_steering_to_logits_graph
+from refusal_circuit.graph import (
+    circuit_connectivity,
+    make_steering_to_logits_graph,
+    paper_greedy_edges,
+    sorted_edges,
+    validate_intervention_connectivity,
+)
 from refusal_circuit.model import memory_efficient_complex_attn_linear
 from refusal_circuit.persona import (
     COHERENCE_PROMPT,
     aggregate_numeric_logprobs,
     align_effective_pairs,
+    behavioral_circuit_summary,
     extraction_specs,
     hf_hidden_state_to_tl_hook,
     make_system_prompt,
     pair_is_effective,
     steer_model_output,
+    token_ids_sha256,
 )
 
 
@@ -162,6 +171,387 @@ class PersonaProtocolTests(unittest.TestCase):
                 self.assertGreaterEqual(edge.parent.layer, 2)
             if edge.child.name != "logits":
                 self.assertGreaterEqual(edge.child.layer, 2)
+
+    def test_causal_cut_is_not_mislabeled_as_connected_circuit(self):
+        from eap.graph import Graph
+
+        graph = Graph.from_model(
+            {"n_layers": 2, "n_heads": 1, "parallel_attn_mlp": False}
+        )
+        for edge in graph.edges.values():
+            edge.score = 0.0
+        graph.edges["m1->logits"].score = 10.0
+
+        selected = paper_greedy_edges(
+            graph, 1, prune_parentless=False
+        )
+        diagnostics = circuit_connectivity(
+            graph, {edge.name for edge in selected}
+        )
+        self.assertEqual({edge.name for edge in selected}, {"m1->logits"})
+        self.assertFalse(diagnostics["has_source_to_sink_path"])
+        self.assertEqual(diagnostics["complete_path_edges"], 0)
+        self.assertEqual(diagnostics["source_disconnected_edges"], 1)
+
+    def test_equal_score_edge_order_is_deterministic(self):
+        from eap.graph import Graph
+
+        graph = Graph.from_model(
+            {"n_layers": 2, "n_heads": 1, "parallel_attn_mlp": False}
+        )
+        for edge in graph.edges.values():
+            edge.score = 0.0
+        expected_terminal = min(
+            edge.name for edge in graph.nodes["logits"].parent_edges
+        )
+
+        selected = paper_greedy_edges(
+            graph, 1, prune_parentless=False
+        )
+
+        self.assertEqual([edge.name for edge in selected], [expected_terminal])
+        self.assertEqual(
+            [edge.name for edge in sorted_edges(graph)],
+            sorted(graph.edges),
+        )
+
+    def test_source_to_sink_pruning_keeps_only_complete_paths(self):
+        from eap.graph import Graph
+
+        graph = Graph.from_model(
+            {"n_layers": 2, "n_heads": 1, "parallel_attn_mlp": False}
+        )
+        for edge in graph.edges.values():
+            edge.score = 0.0
+        graph.edges["m1->logits"].score = 10.0
+        graph.edges["m0->m1"].score = 9.0
+        graph.edges["input->m0"].score = 8.0
+
+        selected = paper_greedy_edges(
+            graph, 3, prune_parentless=True
+        )
+        names = {edge.name for edge in selected}
+        self.assertEqual(
+            names, {"input->m0", "m0->m1", "m1->logits"}
+        )
+        diagnostics = circuit_connectivity(graph, names)
+        self.assertTrue(diagnostics["has_source_to_sink_path"])
+        self.assertTrue(
+            diagnostics["all_edges_on_source_to_sink_paths"]
+        )
+        self.assertEqual(diagnostics["off_path_edges"], 0)
+
+    def test_connectivity_contract_distinguishes_cuts_from_reconstruction(self):
+        cut = {
+            "selected_edges": 5,
+            "sink_disconnected_edges": 0,
+            "all_edges_on_source_to_sink_paths": False,
+        }
+        validate_intervention_connectivity(
+            {"upstream": cut}, require_source_to_sink=False
+        )
+        with self.assertRaises(ValueError):
+            validate_intervention_connectivity(
+                {"upstream": cut}, require_source_to_sink=True
+            )
+        with self.assertRaises(ValueError):
+            validate_intervention_connectivity(
+                {
+                    "upstream": {
+                        **cut,
+                        "selected_edges": 0,
+                    }
+                },
+                require_source_to_sink=False,
+            )
+        with self.assertRaises(ValueError):
+            validate_intervention_connectivity(
+                {
+                    "upstream": {
+                        **cut,
+                        "sink_disconnected_edges": 1,
+                    }
+                },
+                require_source_to_sink=False,
+            )
+
+    def test_connected_runner_uses_rescue_effect_downstream_estimand(self):
+        root = Path(__file__).resolve().parents[1]
+        persona_scripts = root / "scripts/persona"
+        sys.path.insert(0, str(persona_scripts))
+        try:
+            namespace = runpy.run_path(
+                str(persona_scripts / "persona_behavior_connected_circuits.py"),
+                run_name="persona_behavior_connected_circuits_test",
+            )
+        finally:
+            sys.path.remove(str(persona_scripts))
+        downstream_estimand = namespace["_downstream_estimand"]
+        self.assertEqual(
+            downstream_estimand("vector_rescue_downstream_ablated"),
+            "rescue_effect_blocking",
+        )
+        self.assertEqual(
+            downstream_estimand("both_ablated"),
+            "negative_steering",
+        )
+        self.assertEqual(
+            downstream_estimand("downstream_ablated"),
+            "negative_steering",
+        )
+        self.assertEqual(
+            downstream_estimand("both_circuit_only"),
+            "negative_steering",
+        )
+        self.assertEqual(
+            downstream_estimand("upstream_vector_rescue"),
+            "none",
+        )
+        self.assertEqual(
+            downstream_estimand("upstream_ablated"),
+            "none",
+        )
+        self.assertEqual(
+            downstream_estimand("upstream_full_prefix_state_rescue"),
+            "none",
+        )
+        self.assertEqual(downstream_estimand("normal"), "none")
+        self.assertIn("normal", namespace["CONDITIONS"])
+        self.assertIn("downstream_ablated", namespace["CONDITIONS"])
+        self.assertIn(
+            "upstream_full_prefix_state_rescue",
+            namespace["CONDITIONS"],
+        )
+        uses_upstream = namespace["_uses_upstream_intervention"]
+        self.assertFalse(uses_upstream("normal"))
+        self.assertFalse(uses_upstream("downstream_ablated"))
+        self.assertTrue(uses_upstream("upstream_ablated"))
+
+    def test_generated_token_hash_is_exact_and_stable(self):
+        self.assertEqual(
+            token_ids_sha256([1, 2, 3]),
+            token_ids_sha256([1, 2, 3]),
+        )
+        self.assertNotEqual(
+            token_ids_sha256([1, 2, 3]),
+            token_ids_sha256([1, 3, 2]),
+        )
+
+    def test_behavioral_normalization_uses_negative_prompt_baseline(self):
+        normal = [80.0, 60.0]
+        negative = [20.0, 20.0]
+        ablated = [30.0, 30.0]
+        circuit_only = [60.0, 40.0]
+        necessity = behavioral_circuit_summary(
+            normal, negative, ablated, regime="necessity"
+        )
+        sufficiency = behavioral_circuit_summary(
+            normal, negative, circuit_only, regime="sufficiency"
+        )
+        self.assertAlmostEqual(
+            necessity["normal_minus_negative_points"], 50.0
+        )
+        self.assertAlmostEqual(necessity["normalized_effect"], 0.8)
+        self.assertAlmostEqual(sufficiency["normalized_effect"], 0.6)
+
+    def test_downstream_freezer_checks_exact_answer_suffixes(self):
+        root = Path(__file__).resolve().parents[1]
+        persona_scripts = root / "scripts/persona"
+        sys.path.insert(0, str(persona_scripts))
+        try:
+            namespace = runpy.run_path(
+                str(
+                    persona_scripts
+                    / "persona_freeze_downstream_evaluation.py"
+                ),
+                run_name="persona_freeze_downstream_alignment_test",
+            )
+        finally:
+            sys.path.remove(str(persona_scripts))
+
+        class CharacterTokenizer:
+            @staticmethod
+            def encode(text, add_special_tokens=False):
+                del add_special_tokens
+                return [ord(character) for character in text]
+
+        validate = namespace["_validate_counterfactual_answer_alignment"]
+        boundary = validate(
+            CharacterTokenizer(),
+            positive_prompt="abc",
+            aligned_negative_prompt="xyz",
+            answer=" answer",
+        )
+        self.assertEqual(boundary["response_start"], 3)
+        self.assertEqual(boundary["answer_tokens"], 7)
+        with self.assertRaises(ValueError):
+            validate(
+                CharacterTokenizer(),
+                positive_prompt="abc",
+                aligned_negative_prompt="xy",
+                answer=" answer",
+            )
+        unique = namespace["_unique_by_pair_id"]
+        with self.assertRaises(ValueError):
+            unique(
+                [{"pair_id": "x"}, {"pair_id": "x"}],
+                label="positive",
+            )
+
+    def test_generation_pool_signature_pins_causal_semantics(self):
+        root = Path(__file__).resolve().parents[1]
+        persona_scripts = root / "scripts/persona"
+        sys.path.insert(0, str(persona_scripts))
+        try:
+            namespace = runpy.run_path(
+                str(persona_scripts / "persona_pool_generation_splits.py"),
+                run_name="persona_pool_generation_splits_test",
+            )
+        finally:
+            sys.path.remove(str(persona_scripts))
+        signature = namespace["_compatibility_signature"]
+        metadata = {
+            "condition": "upstream_vector_rescue",
+            "behavior_protocol_id": "protocol",
+            "model": {"name": "model", "revision": "revision"},
+            "model_architecture": {"n_layers": 2},
+            "circuit_sha256": "circuit",
+            "direction_sha256": "direction",
+            "response_vector_sha256": "response",
+            "upstream_position_scope": "prompt_only",
+            "upstream_intervention_applied": True,
+            "interface_timing": "prompt_end",
+            "downstream_estimand": "none",
+            "orthogonal_seed": 0,
+            "decoding": {
+                "do_sample": False,
+                "max_new_tokens": 350,
+                "backend": "full_prefix_forward_ungrouped_gqa",
+            },
+        }
+        first = signature(metadata, condition="upstream_vector_rescue")
+        changed = signature(
+            {**metadata, "response_vector_sha256": "other"},
+            condition="upstream_vector_rescue",
+        )
+        self.assertNotEqual(first, changed)
+
+    def test_mediation_analysis_reads_original_pooled_generation_contract(self):
+        root = Path(__file__).resolve().parents[1]
+        namespace = runpy.run_path(
+            str(
+                root
+                / "scripts/persona/persona_analyze_bottleneck_mediation.py"
+            ),
+            run_name="persona_analyze_bottleneck_mediation_test",
+        )
+        value = namespace["_generation_value"]
+        metadata = {
+            "method": "deterministic split-cap pooling audit",
+            "model": {"name": "model"},
+            "decoding": {"max_new_tokens": 350},
+            "compatibility": {
+                "method": "connected formation-expression causal intervention",
+                "model": {"name": "model"},
+                "upstream_circuit_sha256": "upstream",
+                "orthogonal_seed": 3,
+            },
+        }
+        self.assertEqual(
+            value(metadata, "method"),
+            "connected formation-expression causal intervention",
+        )
+        self.assertEqual(
+            value(metadata, "upstream_circuit_sha256"), "upstream"
+        )
+        self.assertEqual(value(metadata, "orthogonal_seed"), 3)
+        self.assertEqual(
+            value(metadata, "decoding"), {"max_new_tokens": 350}
+        )
+
+    def test_prompt_disjoint_evaluation_selection_is_unique_and_balanced(self):
+        root = Path(__file__).resolve().parents[1]
+        persona_scripts = root / "scripts/persona"
+        sys.path.insert(0, str(persona_scripts))
+        try:
+            namespace = runpy.run_path(
+                str(
+                    persona_scripts
+                    / "persona_freeze_downstream_evaluation.py"
+                ),
+                run_name="persona_freeze_downstream_evaluation_test",
+            )
+        finally:
+            sys.path.remove(str(persona_scripts))
+        select = namespace["_select_balanced_identities"]
+        candidates = [
+            {
+                "question_index": question,
+                "instruction_index": instruction,
+                "pair_id": f"{question}-{instruction}",
+            }
+            for question in range(4)
+            for instruction in range(2)
+        ]
+        selected = select(candidates, n=4, seed=7)
+        identities = {
+            (row["question_index"], row["instruction_index"])
+            for row in selected
+        }
+        self.assertEqual(len(identities), 4)
+        self.assertEqual(
+            {row["question_index"] for row in selected},
+            {0, 1, 2, 3},
+        )
+
+    def test_topology_control_uses_coarse_depth_and_span_buckets(self):
+        root = Path(__file__).resolve().parents[1]
+        namespace = runpy.run_path(
+            str(
+                root
+                / "scripts/persona/persona_build_circuit_controls.py"
+            ),
+            run_name="persona_build_circuit_controls_test",
+        )
+        depth_bucket = namespace["_depth_bucket"]
+        span_bucket = namespace["_span_bucket"]
+        self.assertEqual(
+            depth_bucket("mlp", 1, n_layers=28),
+            depth_bucket("mlp", 5, n_layers=28),
+        )
+        self.assertEqual(span_bucket(2, 4), "span_2_3")
+        self.assertEqual(span_bucket(float("nan"), 4), "boundary")
+
+    def test_edge_patching_can_be_restricted_to_prompt_positions(self):
+        import torch
+        from eap.graph import Graph
+
+        graph = Graph.from_model(
+            {"n_layers": 1, "n_heads": 1, "parallel_attn_mlp": False}
+        )
+        for node in graph.nodes.values():
+            node.in_graph = False
+        for edge in graph.edges.values():
+            edge.in_graph = False
+        edge = graph.edges["input->m0"]
+        edge.in_graph = True
+        edge.parent.in_graph = True
+        edge.child.in_graph = True
+        mixed = {"hook_embed": torch.zeros(1, 3, 4)}
+        corrupt = {"hook_embed": torch.ones(1, 3, 4)}
+        activations = torch.zeros(1, 3, 4)
+        hooks = dict(
+            _construction_hooks(
+                graph,
+                corrupt,
+                mixed,
+                patch_selected=True,
+                position_mask=torch.tensor([[True, True, False]]),
+            )
+        )
+        patched = hooks["blocks.0.hook_mlp_in"](activations, None)
+        self.assertTrue(torch.equal(patched[:, :2], torch.ones(1, 2, 4)))
+        self.assertTrue(torch.equal(patched[:, 2:], torch.zeros(1, 1, 4)))
 
     def test_sparse_circuit_only_matches_dense_edge_patching(self):
         """The scalable circuit-only algebra must preserve patch semantics."""
