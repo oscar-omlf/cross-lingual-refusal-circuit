@@ -489,7 +489,7 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=192)
     parser.add_argument("--identity-max-new-tokens", type=int, default=16)
     parser.add_argument("--max-length", type=int, default=1024)
-    parser.add_argument("--condition-microbatch-size", type=int, default=2)
+    parser.add_argument("--condition-microbatch-size", type=int, default=12)
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--device", default=None)
@@ -515,8 +515,10 @@ def main() -> None:
         validate_split_manifest,
     )
     from refusal_circuit.model import (
+        install_memory_efficient_split_qkv_projection,
         load_model,
         tokenize_prompts,
+        validate_memory_efficient_split_qkv_projection,
         validate_model_architecture,
     )
     from refusal_circuit.paths import write_json
@@ -562,6 +564,7 @@ def main() -> None:
     output_root.mkdir(parents=True, exist_ok=True)
 
     model_cfg = config["model"]
+    install_memory_efficient_split_qkv_projection()
     model = load_model(
         model_cfg["name"],
         device=args.device,
@@ -572,6 +575,7 @@ def main() -> None:
         model, config["model_architecture"]
     )
     model.set_ungroup_grouped_query_attention(True)
+    validate_memory_efficient_split_qkv_projection(model)
     tokenizer_identity = _tokenizer_identity(model.tokenizer)
     target_hook = config["vector"]["transformer_lens_target_hook"]
     if target_hook != "blocks.20.hook_resid_pre":
@@ -876,6 +880,11 @@ def main() -> None:
             "backend": "full_prefix_forward_ungrouped_gqa",
             "max_new_tokens": args.max_new_tokens,
             "condition_microbatch_size": args.condition_microbatch_size,
+            "split_qkv_projection": {
+                "implementation": "position_chunked_broadcast_contraction",
+                "position_chunk_size": 32,
+                "gpu_preflight": "bitwise_reference_equivalence_required",
+            },
             "shared_baselines": True,
             "zero_shares_negative_execution": True,
             "resume_boundary": "complete question-condition grid",
