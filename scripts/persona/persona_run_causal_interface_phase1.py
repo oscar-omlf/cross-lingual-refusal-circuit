@@ -13,6 +13,9 @@ from _bootstrap import ROOT
 from persona_run_upstream_contrastive_eapig import _align_system_prompt_pair
 
 
+ORACLE_BACKEND_ID = "residual_only_native_gqa_v1"
+
+
 def _resolve(path: Path) -> Path:
     return path if path.is_absolute() else ROOT / path
 
@@ -105,6 +108,34 @@ def _microbatch_slices(length: int, size: int) -> list[tuple[int, int]]:
         (start, min(start + size, length))
         for start in range(0, length, size)
     ]
+
+
+def _configure_residual_only_forward(model) -> dict[str, bool]:
+    settings = {
+        "use_split_qkv_input": False,
+        "use_attn_result": False,
+        "use_attn_in": False,
+        "ungroup_grouped_query_attention": False,
+    }
+    for attribute, value in settings.items():
+        setter = getattr(model, f"set_{attribute}", None)
+        if callable(setter):
+            setter(value)
+        elif hasattr(model.cfg, attribute):
+            setattr(model.cfg, attribute, value)
+        else:
+            raise RuntimeError(
+                f"TransformerLens does not expose required setting {attribute}."
+            )
+    observed = {
+        attribute: bool(getattr(model.cfg, attribute))
+        for attribute in settings
+    }
+    if observed != settings:
+        raise RuntimeError(
+            f"Residual-only forward settings did not apply: {observed}."
+        )
+    return observed
 
 
 def _condition_specs() -> list[dict]:
@@ -515,10 +546,8 @@ def main() -> None:
         validate_split_manifest,
     )
     from refusal_circuit.model import (
-        install_memory_efficient_split_qkv_projection,
         load_model,
         tokenize_prompts,
-        validate_memory_efficient_split_qkv_projection,
         validate_model_architecture,
     )
     from refusal_circuit.paths import write_json
@@ -564,7 +593,6 @@ def main() -> None:
     output_root.mkdir(parents=True, exist_ok=True)
 
     model_cfg = config["model"]
-    install_memory_efficient_split_qkv_projection()
     model = load_model(
         model_cfg["name"],
         device=args.device,
@@ -574,8 +602,7 @@ def main() -> None:
     observed_architecture = validate_model_architecture(
         model, config["model_architecture"]
     )
-    model.set_ungroup_grouped_query_attention(True)
-    validate_memory_efficient_split_qkv_projection(model)
+    oracle_backend_settings = _configure_residual_only_forward(model)
     tokenizer_identity = _tokenizer_identity(model.tokenizer)
     target_hook = config["vector"]["transformer_lens_target_hook"]
     if target_hook != "blocks.20.hook_resid_pre":
@@ -725,7 +752,16 @@ def main() -> None:
         )
 
     identity_path = output_root / "identity_check.jsonl"
-    identity_rows = read_jsonl(identity_path) if identity_path.exists() else []
+    all_identity_rows = (
+        read_jsonl(identity_path) if identity_path.exists() else []
+    )
+    identity_rows = [
+        row
+        for row in all_identity_rows
+        if row.get("oracle_backend_id") == ORACLE_BACKEND_ID
+    ]
+    if len(identity_rows) != len(all_identity_rows):
+        write_jsonl(identity_path, identity_rows)
     identity_by_question = {
         int(row["question_index"]): row for row in identity_rows
     }
@@ -769,6 +805,7 @@ def main() -> None:
             max_new_tokens=args.identity_max_new_tokens,
         )
         row = {
+            "oracle_backend_id": ORACLE_BACKEND_ID,
             "question_index": question_index,
             "instruction_index": instruction_index,
             "prompt_alignment": alignment,
@@ -782,7 +819,14 @@ def main() -> None:
     ]
 
     responses_path = output_root / "responses.jsonl"
-    responses = read_jsonl(responses_path) if responses_path.exists() else []
+    all_responses = read_jsonl(responses_path) if responses_path.exists() else []
+    responses = [
+        row
+        for row in all_responses
+        if row.get("oracle_backend_id") == ORACLE_BACKEND_ID
+    ]
+    if len(responses) != len(all_responses):
+        write_jsonl(responses_path, responses)
     expected_conditions = {
         spec["condition"] for spec in _condition_specs()
     } | {"zero_clean_interface"}
@@ -828,6 +872,7 @@ def main() -> None:
             condition_microbatch_size=args.condition_microbatch_size,
         )
         for row in rows:
+            row["oracle_backend_id"] = ORACLE_BACKEND_ID
             row["behavior_protocol_id"] = config["protocol_id"]
             row["trait"] = config["trait"]["name"]
             row["model"] = model_cfg["name"]
@@ -877,14 +922,10 @@ def main() -> None:
             "conditions": [spec["condition"] for spec in _condition_specs()]
             + ["zero_clean_interface"],
             "method": "greedy",
-            "backend": "full_prefix_forward_ungrouped_gqa",
+            "backend": ORACLE_BACKEND_ID,
+            "backend_settings": oracle_backend_settings,
             "max_new_tokens": args.max_new_tokens,
             "condition_microbatch_size": args.condition_microbatch_size,
-            "split_qkv_projection": {
-                "implementation": "position_chunked_broadcast_contraction",
-                "position_chunk_size": 32,
-                "gpu_preflight": "bitwise_reference_equivalence_required",
-            },
             "shared_baselines": True,
             "zero_shares_negative_execution": True,
             "resume_boundary": "complete question-condition grid",

@@ -300,6 +300,48 @@ def test_condition_microbatch_slices_are_ordered_complete_and_bounded():
         slices(1, 0)
 
 
+def test_residual_only_backend_disables_head_expanding_trace_settings():
+    root = Path(__file__).resolve().parents[1]
+    scripts = root / "scripts/persona"
+    sys.path.insert(0, str(scripts))
+    try:
+        namespace = runpy.run_path(
+            str(scripts / "persona_run_causal_interface_phase1.py"),
+            run_name="backend_test",
+        )
+    finally:
+        sys.path.remove(str(scripts))
+
+    class Config:
+        use_split_qkv_input = True
+        use_attn_result = True
+        use_attn_in = True
+        ungroup_grouped_query_attention = True
+
+    class Model:
+        cfg = Config()
+
+        def set_use_split_qkv_input(self, value):
+            self.cfg.use_split_qkv_input = value
+
+        def set_use_attn_result(self, value):
+            self.cfg.use_attn_result = value
+
+        def set_use_attn_in(self, value):
+            self.cfg.use_attn_in = value
+
+        def set_ungroup_grouped_query_attention(self, value):
+            self.cfg.ungroup_grouped_query_attention = value
+
+    settings = namespace["_configure_residual_only_forward"](Model())
+    assert settings == {
+        "use_split_qkv_input": False,
+        "use_attn_result": False,
+        "use_attn_in": False,
+        "ungroup_grouped_query_attention": False,
+    }
+
+
 def test_canonical_json_hash_is_order_independent():
     assert canonical_json_sha256({"a": 1, "b": 2}) == canonical_json_sha256(
         {"b": 2, "a": 1}
