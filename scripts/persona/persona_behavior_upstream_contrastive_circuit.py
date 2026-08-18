@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 from _bootstrap import ROOT
-from persona_run_upstream_contrastive_eapig import _align_negative_prompt
+from persona_run_upstream_contrastive_eapig import _align_system_prompt_pair
 
 
 def main() -> None:
@@ -175,44 +175,16 @@ def main() -> None:
         positive_system = make_system_prompt(
             config["trait"]["positive_assistant_name"], instruction["pos"]
         )
-        positive_prompt = model.tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": positive_system},
-                {"role": "user", "content": questions[question_index]},
-            ],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        positive_ids = model.tokenizer.encode(
-            positive_prompt, add_special_tokens=False
-        )
         negative_system = make_system_prompt(
             config["trait"]["negative_assistant_name"], instruction["neg"]
         )
-        negative_prompt = model.tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": negative_system},
-                {"role": "user", "content": questions[question_index]},
-            ],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        negative_ids = model.tokenizer.encode(
-            negative_prompt, add_special_tokens=False
-        )
-        if len(negative_ids) > len(positive_ids):
-            raise ValueError(
-                f"Question {question_index} cannot be token-aligned: the "
-                "negative prompt is longer than the positive prompt."
-            )
-        aligned_negative_prompt, alignment = _align_negative_prompt(
+        aligned_positive_prompt, aligned_negative_prompt, alignment = _align_system_prompt_pair(
             model.tokenizer,
             question=questions[question_index],
-            negative_assistant_name=config["trait"]["negative_assistant_name"],
-            negative_instruction=instruction["neg"],
-            positive_prompt=positive_prompt,
+            positive_system_prompt=positive_system,
+            negative_system_prompt=negative_system,
         )
-        if alignment["positive_tokens"] > args.max_length:
+        if alignment["tokens_after_alignment"] > args.max_length:
             raise ValueError(
                 f"Question {question_index} exceeds --max-length; refusing "
                 "to truncate an upstream behavioral prompt."
@@ -225,7 +197,8 @@ def main() -> None:
                 "question": questions[question_index],
                 "instruction": instruction["pos"],
                 "system_prompt": positive_system,
-                "prompt": positive_prompt,
+                "prompt": aligned_positive_prompt,
+                "negative_prompt": aligned_negative_prompt,
                 "negative_prompt_alignment": alignment,
             }
         )
@@ -557,28 +530,7 @@ def main() -> None:
             clean_tokens, clean_mask = tokenize_prompts(
                 model, [source["prompt"]], max_length=args.max_length
             )
-            positive_ids = model.tokenizer.encode(
-                source["prompt"], add_special_tokens=False
-            )
-            negative_prompt = _align_negative_prompt(
-                model.tokenizer,
-                question=source["question"],
-                negative_assistant_name=config["trait"]["negative_assistant_name"],
-                negative_instruction=instructions[source["instruction_index"]]["neg"],
-                positive_prompt=source["prompt"],
-            )[0]
-            negative_ids = model.tokenizer.encode(
-                negative_prompt, add_special_tokens=False
-            )
-            if len(negative_ids) > len(positive_ids):
-                continue
-            corrupt_prompt = _align_negative_prompt(
-                model.tokenizer,
-                question=source["question"],
-                negative_assistant_name=config["trait"]["negative_assistant_name"],
-                negative_instruction=instructions[source["instruction_index"]]["neg"],
-                positive_prompt=source["prompt"],
-            )[0]
+            corrupt_prompt = source["negative_prompt"]
             corrupt_tokens, corrupt_mask = tokenize_prompts(
                 model, [corrupt_prompt], max_length=args.max_length
             )

@@ -109,6 +109,9 @@ COMMANDS: dict[str, str] = {
     "persona.evaluate-sufficient-circuit": "persona/persona_evaluate_sufficient_circuit.py",
     "persona.behavior-sufficient-composition": "persona/persona_behavior_sufficient_composition.py",
     "persona.analyze-sufficient-composition": "persona/persona_analyze_sufficient_composition.py",
+    "persona.freeze-causal-interface-split": "persona/persona_freeze_causal_interface_split.py",
+    "persona.run-causal-interface-phase1": "persona/persona_run_causal_interface_phase1.py",
+    "persona.analyze-causal-interface-phase1": "persona/persona_analyze_causal_interface_phase1.py",
     # Cross-RQ diagnostics / reporting.
     "rq.causal-site-sweep": "rq_causal_site_sweep.py",
     "results.summary": "results_summary",
@@ -182,6 +185,9 @@ DESCRIPTIONS: dict[str, str] = {
     "persona.evaluate-sufficient-circuit": "Evaluate edge-pruned recurrent circuits on frozen held-out transcript pairs.",
     "persona.behavior-sufficient-composition": "Generate from strict recurrent source-interface-output circuit composition.",
     "persona.analyze-sufficient-composition": "Analyze paired vector-mediated sufficient-circuit behavior and controls.",
+    "persona.freeze-causal-interface-split": "Freeze the question-disjoint Phase 1 interface/discovery/validation/test split.",
+    "persona.run-causal-interface-phase1": "Extract nested independent interfaces and run the full-model Phase 1 oracle.",
+    "persona.analyze-causal-interface-phase1": "Analyze judged Phase 1 rank/timing recoveries and apply the frozen gates.",
     "rq.causal-site-sweep": "Sweep local projection-ablation sites.",
     "results.summary": "Summarize committed RQ1/RQ2 results into Markdown.",
 }

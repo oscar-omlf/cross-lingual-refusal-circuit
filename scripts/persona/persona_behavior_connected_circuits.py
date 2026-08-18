@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 
 from _bootstrap import ROOT
-from persona_run_upstream_contrastive_eapig import _align_negative_prompt
+from persona_run_upstream_contrastive_eapig import _align_system_prompt_pair
 
 
 CONDITIONS = (
@@ -429,46 +429,16 @@ def main() -> None:
         positive_system = make_system_prompt(
             config["trait"]["positive_assistant_name"], instruction["pos"]
         )
-        positive_prompt = model.tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": positive_system},
-                {"role": "user", "content": questions[question_index]},
-            ],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        positive_ids = model.tokenizer.encode(
-            positive_prompt, add_special_tokens=False
-        )
         negative_system = make_system_prompt(
             config["trait"]["negative_assistant_name"], instruction["neg"]
         )
-        negative_prompt_candidate = model.tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": negative_system},
-                {"role": "user", "content": questions[question_index]},
-            ],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        negative_ids = model.tokenizer.encode(
-            negative_prompt_candidate, add_special_tokens=False
-        )
-        # Connected-circuit validation uses the same token-alignment rule so
-        # the method stays identical. Never silently change the requested set.
-        if len(negative_ids) > len(positive_ids):
-            raise ValueError(
-                f"Question {question_index} cannot be token-aligned: the "
-                "negative prompt is longer than the positive prompt."
-            )
-        negative_prompt, alignment = _align_negative_prompt(
+        positive_prompt, negative_prompt, alignment = _align_system_prompt_pair(
             model.tokenizer,
             question=questions[question_index],
-            negative_assistant_name=config["trait"]["negative_assistant_name"],
-            negative_instruction=instruction["neg"],
-            positive_prompt=positive_prompt,
+            positive_system_prompt=positive_system,
+            negative_system_prompt=negative_system,
         )
-        if alignment["positive_tokens"] > args.max_length:
+        if alignment["tokens_after_alignment"] > args.max_length:
             raise ValueError(
                 f"Question {question_index} exceeds --max-length; refusing "
                 "to truncate a connected-circuit prompt."
