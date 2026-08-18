@@ -315,7 +315,7 @@ def test_residual_only_backend_disables_head_expanding_trace_settings():
     class Config:
         use_split_qkv_input = True
         use_attn_result = True
-        use_attn_in = True
+        use_attn_in = False
         ungroup_grouped_query_attention = True
 
     class Model:
@@ -337,6 +337,11 @@ def test_residual_only_backend_disables_head_expanding_trace_settings():
         "use_attn_in": False,
         "ungroup_grouped_query_attention": False,
     }
+
+    model = Model()
+    model.cfg.use_attn_in = True
+    with pytest.raises(RuntimeError, match="requires use_attn_in=False"):
+        namespace["_configure_residual_only_forward"](model)
 
 
 def test_canonical_json_hash_is_order_independent():
