@@ -47,5 +47,6 @@ fi
   --identity-max-new-tokens 16 \
   --max-new-tokens 192 \
   --max-length 1024 \
+  --condition-microbatch-size "${PHASE1_CONDITION_MICROBATCH_SIZE:-2}" \
   --output-root "${phase1_root}" \
   --resume

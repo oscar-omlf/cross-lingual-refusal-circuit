@@ -96,6 +96,17 @@ def _tokenizer_identity(tokenizer) -> dict:
     }
 
 
+def _microbatch_slices(length: int, size: int) -> list[tuple[int, int]]:
+    if length < 0:
+        raise ValueError("Microbatch length cannot be negative.")
+    if size <= 0:
+        raise ValueError("Microbatch size must be positive.")
+    return [
+        (start, min(start + size, length))
+        for start in range(0, length, size)
+    ]
+
+
 def _condition_specs() -> list[dict]:
     from refusal_circuit.causal_interface import PHASE1_RANKS, PHASE1_TIMINGS
 
@@ -235,6 +246,7 @@ def _run_question_grid(
     target_hook: str,
     max_new_tokens: int,
     max_length: int,
+    condition_microbatch_size: int,
 ) -> tuple[list[dict], dict]:
     import torch
 
@@ -285,85 +297,105 @@ def _run_question_grid(
         active = [stream for stream in streams if not stream["finished"]]
         if not active:
             break
-        clean_batch = torch.cat(
-            [stream["clean_tokens"] for stream in active], dim=0
-        )
-        clean_batch_mask = torch.cat(
-            [stream["clean_mask"] for stream in active], dim=0
-        )
-        corrupt_batch = torch.cat(
-            [stream["corrupt_tokens"] for stream in active], dim=0
-        )
-        corrupt_batch_mask = torch.cat(
-            [stream["corrupt_mask"] for stream in active], dim=0
-        )
-        clean_state, clean_logits = _capture_state(
-            model, clean_batch, clean_batch_mask, target_hook
-        )
-        corrupt_state, corrupt_logits = _capture_state(
-            model, corrupt_batch, corrupt_batch_mask, target_hook
-        )
-
-        intervention_indices = [
-            index
-            for index, stream in enumerate(active)
-            if stream["component"] not in {"positive", "negative"}
-        ]
-        intervention_logits = None
-        index_to_intervention = {}
-        if intervention_indices:
-            states = []
-            tokens = []
-            masks = []
-            for output_index, active_index in enumerate(intervention_indices):
-                stream = active[active_index]
-                delta = clean_state[active_index : active_index + 1] - (
-                    corrupt_state[active_index : active_index + 1]
-                )
-                mask = timing_mask(
-                    corrupt_batch_mask[active_index : active_index + 1],
-                    prompt_end=prompt_end,
-                    timing=stream["timing"],
-                )
-                rank = stream.get("rank")
-                selected_basis = basis[:rank] if rank is not None else None
-                state = timed_interface_state(
-                    corrupt_state[active_index : active_index + 1],
-                    delta,
-                    mask,
-                    basis=selected_basis,
-                    component=stream["component"],
-                )
-                states.append(state)
-                tokens.append(corrupt_batch[active_index : active_index + 1])
-                masks.append(corrupt_batch_mask[active_index : active_index + 1])
-                index_to_intervention[active_index] = output_index
-                if selected_basis is not None:
-                    active_delta = delta[mask]
-                    if active_delta.numel():
-                        stream["diagnostics"].append(
-                            projection_diagnostics(active_delta, selected_basis)
-                        )
-            intervention_logits = _fixed_state_logits(
-                model,
-                torch.cat(tokens, dim=0),
-                torch.cat(masks, dim=0),
-                target_hook,
-                torch.cat(states, dim=0),
+        for start, end in _microbatch_slices(
+            len(active), condition_microbatch_size
+        ):
+            microbatch = active[start:end]
+            clean_batch = torch.cat(
+                [stream["clean_tokens"] for stream in microbatch], dim=0
+            )
+            clean_batch_mask = torch.cat(
+                [stream["clean_mask"] for stream in microbatch], dim=0
+            )
+            corrupt_batch = torch.cat(
+                [stream["corrupt_tokens"] for stream in microbatch], dim=0
+            )
+            corrupt_batch_mask = torch.cat(
+                [stream["corrupt_mask"] for stream in microbatch], dim=0
+            )
+            clean_state, clean_logits = _capture_state(
+                model, clean_batch, clean_batch_mask, target_hook
+            )
+            corrupt_state, corrupt_logits = _capture_state(
+                model, corrupt_batch, corrupt_batch_mask, target_hook
             )
 
-        for active_index, stream in enumerate(active):
-            if stream["component"] == "positive":
-                logits = clean_logits[active_index]
-            elif stream["component"] == "negative":
-                logits = corrupt_logits[active_index]
-            else:
-                logits = intervention_logits[index_to_intervention[active_index]]
-            if not torch.isfinite(logits).all():
-                raise FloatingPointError(
-                    f"Non-finite logits for {stream['condition']}."
+            intervention_indices = [
+                index
+                for index, stream in enumerate(microbatch)
+                if stream["component"] not in {"positive", "negative"}
+            ]
+            intervention_logits = None
+            index_to_intervention = {}
+            if intervention_indices:
+                states = []
+                tokens = []
+                masks = []
+                for output_index, microbatch_index in enumerate(
+                    intervention_indices
+                ):
+                    stream = microbatch[microbatch_index]
+                    delta = clean_state[
+                        microbatch_index : microbatch_index + 1
+                    ] - corrupt_state[microbatch_index : microbatch_index + 1]
+                    mask = timing_mask(
+                        corrupt_batch_mask[
+                            microbatch_index : microbatch_index + 1
+                        ],
+                        prompt_end=prompt_end,
+                        timing=stream["timing"],
+                    )
+                    rank = stream.get("rank")
+                    selected_basis = basis[:rank] if rank is not None else None
+                    state = timed_interface_state(
+                        corrupt_state[
+                            microbatch_index : microbatch_index + 1
+                        ],
+                        delta,
+                        mask,
+                        basis=selected_basis,
+                        component=stream["component"],
+                    )
+                    states.append(state)
+                    tokens.append(
+                        corrupt_batch[microbatch_index : microbatch_index + 1]
+                    )
+                    masks.append(
+                        corrupt_batch_mask[
+                            microbatch_index : microbatch_index + 1
+                        ]
+                    )
+                    index_to_intervention[microbatch_index] = output_index
+                    if selected_basis is not None:
+                        active_delta = delta[mask]
+                        if active_delta.numel():
+                            stream["diagnostics"].append(
+                                projection_diagnostics(
+                                    active_delta, selected_basis
+                                )
+                            )
+                intervention_logits = _fixed_state_logits(
+                    model,
+                    torch.cat(tokens, dim=0),
+                    torch.cat(masks, dim=0),
+                    target_hook,
+                    torch.cat(states, dim=0),
                 )
-            _append_token(stream, int(logits.argmax().item()), eos_id)
+
+            for microbatch_index, stream in enumerate(microbatch):
+                if stream["component"] == "positive":
+                    logits = clean_logits[microbatch_index]
+                elif stream["component"] == "negative":
+                    logits = corrupt_logits[microbatch_index]
+                else:
+                    logits = intervention_logits[
+                        index_to_intervention[microbatch_index]
+                    ]
+                if not torch.isfinite(logits).all():
+                    raise FloatingPointError(
+                        f"Non-finite logits for {stream['condition']}."
+                    )
+                _append_token(stream, int(logits.argmax().item()), eos_id)
 
     rows = []
     for stream in streams:
@@ -457,6 +489,7 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=192)
     parser.add_argument("--identity-max-new-tokens", type=int, default=16)
     parser.add_argument("--max-length", type=int, default=1024)
+    parser.add_argument("--condition-microbatch-size", type=int, default=2)
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--device", default=None)
@@ -466,6 +499,8 @@ def main() -> None:
         raise ValueError("--question-indices must be sorted and unique.")
     if args.max_new_tokens <= 0 or args.identity_max_new_tokens <= 0:
         raise ValueError("Generation token limits must be positive.")
+    if args.condition_microbatch_size <= 0:
+        raise ValueError("--condition-microbatch-size must be positive.")
 
     import torch
     from tqdm.auto import tqdm
@@ -786,6 +821,7 @@ def main() -> None:
             target_hook=target_hook,
             max_new_tokens=args.max_new_tokens,
             max_length=args.max_length,
+            condition_microbatch_size=args.condition_microbatch_size,
         )
         for row in rows:
             row["behavior_protocol_id"] = config["protocol_id"]
@@ -839,6 +875,7 @@ def main() -> None:
             "method": "greedy",
             "backend": "full_prefix_forward_ungrouped_gqa",
             "max_new_tokens": args.max_new_tokens,
+            "condition_microbatch_size": args.condition_microbatch_size,
             "shared_baselines": True,
             "zero_shares_negative_execution": True,
             "resume_boundary": "complete question-condition grid",

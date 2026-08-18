@@ -275,6 +275,31 @@ def test_phase1_output_schema_and_cli_registration():
         validate_phase1_output_schema(payload)
 
 
+def test_condition_microbatch_slices_are_ordered_complete_and_bounded():
+    root = Path(__file__).resolve().parents[1]
+    scripts = root / "scripts/persona"
+    sys.path.insert(0, str(scripts))
+    try:
+        namespace = runpy.run_path(
+            str(scripts / "persona_run_causal_interface_phase1.py"),
+            run_name="microbatch_test",
+        )
+    finally:
+        sys.path.remove(str(scripts))
+    slices = namespace["_microbatch_slices"]
+    assert slices(7, 2) == [(0, 2), (2, 4), (4, 6), (6, 7)]
+    assert slices(0, 2) == []
+    covered = [
+        index
+        for start, end in slices(20, 3)
+        for index in range(start, end)
+    ]
+    assert covered == list(range(20))
+    assert all(end - start <= 3 for start, end in slices(20, 3))
+    with pytest.raises(ValueError, match="positive"):
+        slices(1, 0)
+
+
 def test_canonical_json_hash_is_order_independent():
     assert canonical_json_sha256({"a": 1, "b": 2}) == canonical_json_sha256(
         {"b": 2, "a": 1}
