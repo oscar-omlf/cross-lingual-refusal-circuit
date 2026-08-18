@@ -391,6 +391,7 @@ def mixed_forward_from_prompt_pair(
     target_position: int,
     direction: torch.Tensor,
     patch_selected: bool,
+    target_mask: torch.Tensor | None = None,
     cache_dtype: torch.dtype | None = None,
 ):
     """Patch clean-prompt edges with a token-aligned natural corrupt prompt.
@@ -422,7 +423,11 @@ def mixed_forward_from_prompt_pair(
         model(corrupt_tokens, attention_mask=corrupt_attention_mask)
 
     mixed_cache: dict[str, torch.Tensor] = {}
-    capture = ProjectionCapture(direction=direction, position=target_position)
+    capture = (
+        MaskedProjectionCapture(direction=direction, mask=target_mask)
+        if target_mask is not None
+        else ProjectionCapture(direction=direction, position=target_position)
+    )
     mixed_hooks = _source_cache_hooks(
         model,
         graph,
@@ -443,6 +448,73 @@ def mixed_forward_from_prompt_pair(
     with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
         logits = model(clean_tokens, attention_mask=clean_attention_mask)
     return capture.values().detach(), logits.detach()
+
+
+def mixed_state_from_prompt_pair(
+    model,
+    graph,
+    clean_tokens,
+    clean_attention_mask,
+    corrupt_tokens,
+    corrupt_attention_mask,
+    *,
+    target_hook: str,
+    patch_selected: bool,
+    cache_dtype: torch.dtype | None = None,
+):
+    """Return a full target state under natural-prompt edge patching."""
+
+    if tuple(clean_tokens.shape) != tuple(corrupt_tokens.shape):
+        raise ValueError("Clean and corrupt token tensors must have identical shape.")
+    if not torch.equal(clean_attention_mask, corrupt_attention_mask):
+        raise ValueError("Clean and corrupt attention masks must be identical.")
+
+    corrupt_cache: dict[str, torch.Tensor] = {}
+    corrupt_receivers: dict[tuple[str, str | None], torch.Tensor] = {}
+    corrupt_hooks = _source_cache_hooks(
+        model,
+        graph,
+        corrupt_cache,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    if not patch_selected:
+        corrupt_hooks += _receiver_cache_hooks(
+            graph, corrupt_receivers, storage_dtype=cache_dtype
+        )
+    with torch.inference_mode(), model.hooks(fwd_hooks=corrupt_hooks):
+        model(corrupt_tokens, attention_mask=corrupt_attention_mask)
+
+    mixed_cache: dict[str, torch.Tensor] = {}
+    captured: dict[str, torch.Tensor] = {}
+
+    def capture(activations: torch.Tensor, hook):
+        del hook
+        captured["state"] = activations.detach().clone()
+        return activations
+
+    mixed_hooks = _source_cache_hooks(
+        model,
+        graph,
+        mixed_cache,
+        selected_only=True,
+        storage_dtype=cache_dtype,
+    )
+    mixed_hooks += (
+        _construction_hooks(
+            graph, corrupt_cache, mixed_cache, patch_selected=True
+        )
+        if patch_selected
+        else _sparse_circuit_only_construction_hooks(
+            graph, corrupt_cache, mixed_cache, corrupt_receivers
+        )
+    )
+    mixed_hooks.append((target_hook, capture))
+    with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
+        model(clean_tokens, attention_mask=clean_attention_mask)
+    if "state" not in captured:
+        raise RuntimeError(f"Target state hook did not fire: {target_hook}")
+    return captured["state"]
 
 
 def mixed_logits_from_prompt_pair(
@@ -509,6 +581,8 @@ def mixed_logits_with_intervention(
     *,
     corrupt_fwd_hooks,
     corrupt_cache_transform,
+    clean_fwd_hooks=(),
+    clean_cache_transform=None,
     patch_selected: bool,
     cache_dtype: torch.dtype | None = None,
 ):
@@ -546,9 +620,11 @@ def mixed_logits_with_intervention(
         model,
         graph,
         mixed_cache,
+        cache_transform=clean_cache_transform,
         selected_only=True,
         storage_dtype=cache_dtype,
     )
+    mixed_hooks += list(clean_fwd_hooks)
     mixed_hooks += (
         _construction_hooks(
             graph, corrupt_cache, mixed_cache, patch_selected=True

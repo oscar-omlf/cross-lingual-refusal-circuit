@@ -68,7 +68,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--scope",
-        choices=("upstream", "downstream", "end_to_end"),
+        choices=(
+            "upstream",
+            "downstream",
+            "end_to_end",
+            "edge_pruning_upstream",
+            "edge_pruning_downstream",
+        ),
         required=True,
     )
     parser.add_argument("--run-name", required=True)
@@ -108,6 +114,7 @@ def main() -> None:
     from refusal_circuit.graph import (
         circuit_connectivity,
         edge_record,
+        make_projection_graph,
         make_steering_to_logits_graph,
         paper_greedy_edges,
     )
@@ -125,7 +132,36 @@ def main() -> None:
     n_layers = int(architecture["n_layers"])
     n_heads = int(architecture["n_heads"])
     parallel_attn_mlp = bool(architecture["parallel_attn_mlp"])
-    if args.scope == "upstream":
+    edge_pruning_stage = {
+        "edge_pruning_upstream": "upstream",
+        "edge_pruning_downstream": "downstream",
+    }.get(args.scope)
+    if edge_pruning_stage is not None:
+        if args.family != "source_to_sink":
+            raise ValueError(
+                "Edge-pruning controls are defined only for source-to-sink "
+                "circuits."
+            )
+        discovery = (
+            result_root
+            / "circuit_discovery_edge_pruning"
+            / edge_pruning_stage
+            / args.run_name
+        )
+        model_stub = SimpleNamespace(
+            cfg=SimpleNamespace(
+                n_layers=n_layers,
+                n_heads=n_heads,
+                parallel_attn_mlp=parallel_attn_mlp,
+            )
+        )
+        graph = (
+            make_projection_graph(model_stub, layer)
+            if edge_pruning_stage == "upstream"
+            else make_steering_to_logits_graph(model_stub, layer)
+        )
+        filename = "edge_pruned_top_{k}.json"
+    elif args.scope == "upstream":
         discovery = (
             result_root
             / "circuit_discovery_upstream_contrastive"
@@ -171,12 +207,24 @@ def main() -> None:
         graph.nodes["input"].out_hook = "blocks.0.hook_resid_pre"
         filename = "end_to_end_eapig_top_{k}.json"
 
-    metadata_path = discovery / "eapig_run_metadata.json"
+    metadata_path = discovery / (
+        "metadata.json"
+        if edge_pruning_stage is not None
+        else "eapig_run_metadata.json"
+    )
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     if metadata.get("status") != "complete":
         raise ValueError("Discovery metadata is not complete.")
     extra = {}
-    if args.scope == "downstream":
+    if edge_pruning_stage is not None:
+        if metadata.get("stage") != edge_pruning_stage:
+            raise ValueError("Edge-pruning stage and metadata disagree.")
+        extra = {
+            "edge_pruning_stage": edge_pruning_stage,
+            "interface": metadata["objective"]["interface"],
+            "position_scope": metadata["objective"]["position_scope"],
+        }
+    elif args.scope == "downstream":
         extra = {
             "corrupt_coefficient": metadata["steering"][
                 "corrupt_coefficient"
@@ -190,10 +238,45 @@ def main() -> None:
                 "vector": metadata["steering"]["vector"],
             },
         }
-    score_path = ROOT / metadata["score_file"]
-    if sha256_file(score_path) != metadata["score_sha256"]:
+    score_path = ROOT / (
+        metadata["outputs"]["scores"]
+        if edge_pruning_stage is not None
+        else metadata["score_file"]
+    )
+    expected_score_hash = (
+        metadata["outputs"]["scores_sha256"]
+        if edge_pruning_stage is not None
+        else metadata["score_sha256"]
+    )
+    if sha256_file(score_path) != expected_score_hash:
         raise ValueError("Frozen score table hash changed.")
-    scores = pd.read_parquet(score_path).reset_index(drop=True)
+    if edge_pruning_stage is None:
+        scores = pd.read_parquet(score_path).reset_index(drop=True)
+    else:
+        gate_scores = {}
+        with score_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                row = json.loads(line)
+                gate_scores[row["edge"]] = float(row["gate_score"])
+        rows = []
+        for edge in graph.edges.values():
+            record = edge_record(edge)
+            rows.append(
+                {
+                    "name": record["name"],
+                    "source_type": record["source"]["type"],
+                    "source_layer": record["source"].get("layer"),
+                    "target_type": record["target"]["type"],
+                    "target_layer": record["target"].get("layer"),
+                    "qkv": record["qkv"],
+                    "score": gate_scores.get(record["name"]),
+                }
+            )
+        scores = pd.DataFrame(rows)
+        if scores["score"].isna().any() or set(gate_scores) != set(graph.edges):
+            raise ValueError(
+                "Learned gate score table does not match the reconstructed graph."
+            )
     if set(scores["name"]) != set(graph.edges):
         raise ValueError("Score table does not match the reconstructed graph.")
 
@@ -368,6 +451,7 @@ def main() -> None:
                     "schema_version": 2,
                     "method": "topology_stratified_score_permutation_control",
                     "control_scope": args.scope,
+                    "discovery_method": metadata.get("method"),
                     "circuit_family": args.family,
                     "selection": (
                         "paper_greedy_absolute_score_with_recursive_source_sink_pruning"
@@ -430,6 +514,7 @@ def main() -> None:
             "schema_version": 2,
             "status": "complete",
             "scope": args.scope,
+            "discovery_method": metadata.get("method"),
             "model_architecture": architecture,
             "control_name": args.control_name,
             "family": args.family,

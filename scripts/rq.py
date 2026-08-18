@@ -105,6 +105,10 @@ COMMANDS: dict[str, str] = {
     "persona.run-steering-eapig": "persona/persona_run_steering_eapig.py",
     "persona.evaluate-steering-circuit": "persona/persona_evaluate_steering_circuit.py",
     "persona.behavior-steering-circuit": "persona/persona_behavior_steering_circuit.py",
+    "persona.prune-sufficient-circuit": "persona/persona_prune_sufficient_circuit.py",
+    "persona.evaluate-sufficient-circuit": "persona/persona_evaluate_sufficient_circuit.py",
+    "persona.behavior-sufficient-composition": "persona/persona_behavior_sufficient_composition.py",
+    "persona.analyze-sufficient-composition": "persona/persona_analyze_sufficient_composition.py",
     # Cross-RQ diagnostics / reporting.
     "rq.causal-site-sweep": "rq_causal_site_sweep.py",
     "results.summary": "results_summary",
@@ -174,6 +178,10 @@ DESCRIPTIONS: dict[str, str] = {
     "persona.run-steering-eapig": "Discover a downstream behavioral circuit along a persona-steering coefficient path.",
     "persona.evaluate-steering-circuit": "Evaluate steering-path circuit mediation on held-out response logits.",
     "persona.behavior-steering-circuit": "Validate a steering-path circuit during free generation.",
+    "persona.prune-sufficient-circuit": "Optimize reconstructively sufficient source-interface or interface-output edge gates.",
+    "persona.evaluate-sufficient-circuit": "Evaluate edge-pruned recurrent circuits on frozen held-out transcript pairs.",
+    "persona.behavior-sufficient-composition": "Generate from strict recurrent source-interface-output circuit composition.",
+    "persona.analyze-sufficient-composition": "Analyze paired vector-mediated sufficient-circuit behavior and controls.",
     "rq.causal-site-sweep": "Sweep local projection-ablation sites.",
     "results.summary": "Summarize committed RQ1/RQ2 results into Markdown.",
 }
