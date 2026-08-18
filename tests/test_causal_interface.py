@@ -327,9 +327,6 @@ def test_residual_only_backend_disables_head_expanding_trace_settings():
         def set_use_attn_result(self, value):
             self.cfg.use_attn_result = value
 
-        def set_use_attn_in(self, value):
-            self.cfg.use_attn_in = value
-
         def set_ungroup_grouped_query_attention(self, value):
             self.cfg.ungroup_grouped_query_attention = value
 

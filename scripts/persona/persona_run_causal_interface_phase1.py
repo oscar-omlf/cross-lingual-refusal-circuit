@@ -114,7 +114,6 @@ def _configure_residual_only_forward(model) -> dict[str, bool]:
     settings = {
         "use_split_qkv_input": False,
         "use_attn_result": False,
-        "use_attn_in": False,
         "ungroup_grouped_query_attention": False,
     }
     for attribute, value in settings.items():
@@ -127,6 +126,10 @@ def _configure_residual_only_forward(model) -> dict[str, bool]:
             raise RuntimeError(
                 f"TransformerLens does not expose required setting {attribute}."
             )
+    if bool(getattr(model.cfg, "use_attn_in", False)):
+        raise RuntimeError(
+            "Residual-only GQA backend requires use_attn_in=False."
+        )
     observed = {
         attribute: bool(getattr(model.cfg, attribute))
         for attribute in settings
@@ -135,7 +138,7 @@ def _configure_residual_only_forward(model) -> dict[str, bool]:
         raise RuntimeError(
             f"Residual-only forward settings did not apply: {observed}."
         )
-    return observed
+    return {**observed, "use_attn_in": False}
 
 
 def _condition_specs() -> list[dict]:
