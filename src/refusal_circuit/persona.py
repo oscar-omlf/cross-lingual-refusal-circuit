@@ -289,6 +289,7 @@ def steer_model_output_timed(
     coefficient: float,
     *,
     timing: str,
+    prompt_position: int = -1,
 ):
     """Apply a vector at prompt end, response decoding, or both.
 
@@ -302,6 +303,8 @@ def steer_model_output_timed(
         raise ValueError(
             "timing must be 'prompt_end_only', 'response_only', or 'recurrent'"
         )
+    if prompt_position >= 0:
+        raise ValueError("prompt_position must be a negative suffix index")
 
     def add(tensor):
         steer = torch.as_tensor(vector, dtype=tensor.dtype, device=tensor.device)
@@ -316,7 +319,13 @@ def steer_model_output_timed(
         if not should_apply:
             return tensor
         changed = tensor.clone()
-        changed[:, -1, :] += float(coefficient) * steer
+        position = prompt_position if is_prefill else -1
+        if abs(position) > tensor.shape[1]:
+            raise ValueError(
+                f"prompt_position {prompt_position} is outside sequence length "
+                f"{tensor.shape[1]}"
+            )
+        changed[:, position, :] += float(coefficient) * steer
         return changed
 
     if torch.is_tensor(output):
@@ -326,6 +335,84 @@ def steer_model_output_timed(
     if isinstance(output, list) and output and torch.is_tensor(output[0]):
         return [add(output[0]), *output[1:]]
     return output
+
+
+def add_direction_to_output(output, vector, coefficient: float = 1.0):
+    """Add a raw direction to every sequence position in a layer output."""
+    import torch
+
+    def add(tensor):
+        direction = torch.as_tensor(
+            vector,
+            dtype=tensor.dtype,
+            device=tensor.device,
+        )
+        if direction.ndim != 1 or direction.numel() != tensor.shape[-1]:
+            raise ValueError("direction shape does not match the hidden dimension")
+        return tensor + float(coefficient) * direction
+
+    if torch.is_tensor(output):
+        return add(output)
+    if isinstance(output, tuple) and output and torch.is_tensor(output[0]):
+        return (add(output[0]), *output[1:])
+    if isinstance(output, list) and output and torch.is_tensor(output[0]):
+        return [add(output[0]), *output[1:]]
+    return output
+
+
+def ablate_direction_from_output(output, vector):
+    """Remove a unit direction from every sequence position in a layer output."""
+    import torch
+
+    def ablate(tensor):
+        direction = torch.as_tensor(
+            vector,
+            dtype=tensor.dtype,
+            device=tensor.device,
+        )
+        if direction.ndim != 1 or direction.numel() != tensor.shape[-1]:
+            raise ValueError("direction shape does not match the hidden dimension")
+        unit = direction / direction.float().norm().clamp_min(1e-8).to(direction)
+        coefficient = torch.einsum("...d,d->...", tensor, unit)
+        return tensor - coefficient.unsqueeze(-1) * unit
+
+    if torch.is_tensor(output):
+        return ablate(output)
+    if isinstance(output, tuple) and output and torch.is_tensor(output[0]):
+        return (ablate(output[0]), *output[1:])
+    if isinstance(output, list) and output and torch.is_tensor(output[0]):
+        return [ablate(output[0]), *output[1:]]
+    return output
+
+
+def select_prompt_direction_candidate(
+    rows: Sequence[dict],
+    *,
+    kl_threshold: float = 0.1,
+    coherence_threshold: float = 80.0,
+) -> dict:
+    """Select the strongest balanced induction/ablation candidate."""
+    if not rows:
+        raise ValueError("candidate rows cannot be empty")
+    eligible = [
+        row
+        for row in rows
+        if float(row["negative_ablation_kl"]) <= kl_threshold
+        and float(row["induction_coherence_mean"]) >= coherence_threshold
+        and float(row["ablation_coherence_mean"]) >= coherence_threshold
+        and int(row["cap_hits"]) == 0
+    ]
+    if not eligible:
+        raise RuntimeError("No prompt-direction candidate passed the frozen guardrails.")
+    return max(
+        eligible,
+        key=lambda row: (
+            float(row["balanced_normalized_effect"]),
+            -float(row["negative_ablation_kl"]),
+            -int(row["layer_one_indexed"]),
+            int(row["position"]),
+        ),
+    )
 
 
 def match_vector_norm(vector, reference):

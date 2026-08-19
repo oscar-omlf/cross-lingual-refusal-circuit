@@ -50,6 +50,24 @@ def main() -> None:
         action="store_true",
         help="Scale a noncanonical variant to the selected response vector's norm.",
     )
+    parser.add_argument(
+        "--vector",
+        type=Path,
+        default=None,
+        help="Explicit one-dimensional vector artifact selected by another protocol.",
+    )
+    parser.add_argument(
+        "--layer",
+        type=int,
+        default=None,
+        help="One-indexed hidden-state layer for --vector.",
+    )
+    parser.add_argument(
+        "--prompt-position",
+        type=int,
+        default=-1,
+        help="Negative suffix position used on the prefill pass.",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--device", default="cuda")
@@ -59,6 +77,12 @@ def main() -> None:
         raise ValueError("Question indices must be unique.")
     if args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive.")
+    if args.prompt_position >= 0:
+        raise ValueError("--prompt-position must be negative.")
+    if (args.vector is None) != (args.layer is None):
+        raise ValueError("--vector and --layer must be supplied together.")
+    if args.vector is not None and args.match_response_vector_norm:
+        raise ValueError("Explicit vectors cannot use --match-response-vector-norm.")
 
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -87,13 +111,20 @@ def main() -> None:
     result_root = _resolve(Path(config["paths"]["results_root"]))
     trait_slug = config["trait"]["name"]
     vector_path = (
-        result_root / "vector" / f"{trait_slug}_{args.vector_variant}.pt"
+        _resolve(args.vector)
+        if args.vector is not None
+        else result_root / "vector" / f"{trait_slug}_{args.vector_variant}.pt"
     )
     vector_stack = torch.load(vector_path, map_location="cpu", weights_only=True)
-    layer = int(vector_cfg["paper_layer"])
-    if vector_stack.ndim != 2 or not 0 <= layer < vector_stack.shape[0]:
-        raise ValueError(f"Unexpected vector stack shape {tuple(vector_stack.shape)}.")
-    direction = vector_stack[layer]
+    layer = args.layer if args.layer is not None else int(vector_cfg["paper_layer"])
+    if vector_stack.ndim == 2:
+        if not 0 <= layer < vector_stack.shape[0]:
+            raise ValueError(f"Unexpected vector stack shape {tuple(vector_stack.shape)}.")
+        direction = vector_stack[layer]
+    elif vector_stack.ndim == 1:
+        direction = vector_stack
+    else:
+        raise ValueError(f"Unexpected vector shape {tuple(vector_stack.shape)}.")
     source_norm = float(direction.float().norm().item())
     norm_reference_path = None
     if args.match_response_vector_norm:
@@ -135,7 +166,9 @@ def main() -> None:
         torch_dtype=getattr(torch, model_cfg["dtype"]),
         low_cpu_mem_usage=True,
     ).to(args.device).eval()
-    block_index = int(vector_cfg["transformer_lens_steering_block"])
+    block_index = layer - 1
+    if block_index < 0:
+        raise ValueError("--layer must be positive.")
     target_block = model.model.layers[block_index]
     direction = direction.to(
         device=args.device,
@@ -164,6 +197,7 @@ def main() -> None:
                         direction,
                         args.coefficient,
                         timing=timing,
+                        prompt_position=args.prompt_position,
                     )
                 )
             try:
@@ -215,6 +249,7 @@ def main() -> None:
                     "timing": condition,
                     "layer_one_indexed": layer,
                     "steering_block_zero_indexed": block_index,
+                    "prompt_position": args.prompt_position,
                 }
             )
 
@@ -231,7 +266,11 @@ def main() -> None:
         "vector": {
             "path": str(vector_path.relative_to(ROOT)),
             "sha256": sha256_file(vector_path),
-            "variant": args.vector_variant,
+            "variant": (
+                "explicit_selected_direction"
+                if args.vector is not None
+                else args.vector_variant
+            ),
             "source_norm": source_norm,
             "applied_norm": applied_norm,
             "norm_reference": (
@@ -246,13 +285,19 @@ def main() -> None:
             "layer_one_indexed": layer,
             "steering_block_zero_indexed": block_index,
             "coefficient": args.coefficient,
+            "prompt_position": args.prompt_position,
         },
         "questions": list(args.question_indices),
         "conditions": list(conditions),
         "timing_semantics": {
-            "prompt_end_only": "final prompt token on prefill only",
+            "prompt_end_only": (
+                f"prompt suffix position {args.prompt_position} on prefill only"
+            ),
             "response_only": "single-token cached decoding calls only",
-            "recurrent": "final prompt token and every cached decoding call",
+            "recurrent": (
+                f"prompt suffix position {args.prompt_position} and every "
+                "cached decoding call"
+            ),
         },
         "decoding": {
             "do_sample": False,

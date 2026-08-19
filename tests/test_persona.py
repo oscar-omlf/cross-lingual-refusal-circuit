@@ -28,6 +28,8 @@ from refusal_circuit.graph import (
 from refusal_circuit.model import memory_efficient_complex_attn_linear
 from refusal_circuit.persona import (
     COHERENCE_PROMPT,
+    ablate_direction_from_output,
+    add_direction_to_output,
     aggregate_numeric_logprobs,
     align_effective_pairs,
     behavioral_circuit_summary,
@@ -36,6 +38,7 @@ from refusal_circuit.persona import (
     make_system_prompt,
     match_vector_norm,
     pair_is_effective,
+    select_prompt_direction_candidate,
     steer_model_output,
     steer_model_output_timed,
     token_ids_sha256,
@@ -208,6 +211,83 @@ class PersonaProtocolTests(unittest.TestCase):
                 2.0,
                 timing="unknown",
             )
+
+    def test_timed_steering_supports_second_to_last_prompt_position(self):
+        import torch
+
+        vector = torch.ones(4)
+        prefill = torch.zeros(1, 3, 4)
+        changed = steer_model_output_timed(
+            prefill,
+            vector,
+            2.0,
+            timing="prompt_end_only",
+            prompt_position=-2,
+        )
+        self.assertTrue(torch.equal(changed[:, -1], prefill[:, -1]))
+        self.assertTrue(
+            torch.equal(changed[:, -2], torch.full((1, 4), 2.0))
+        )
+
+    def test_prompt_direction_output_interventions(self):
+        import torch
+
+        original = torch.tensor([[[3.0, 4.0], [6.0, 8.0]]])
+        added = add_direction_to_output(original, torch.tensor([1.0, 0.0]), 2.0)
+        self.assertTrue(
+            torch.equal(
+                added,
+                torch.tensor([[[5.0, 4.0], [8.0, 8.0]]]),
+            )
+        )
+        ablated = ablate_direction_from_output(
+            original,
+            torch.tensor([1.0, 0.0]),
+        )
+        self.assertTrue(
+            torch.equal(
+                ablated,
+                torch.tensor([[[0.0, 4.0], [0.0, 8.0]]]),
+            )
+        )
+        self.assertTrue(torch.equal(original, torch.tensor([[[3.0, 4.0], [6.0, 8.0]]])))
+
+    def test_prompt_direction_selection_uses_balanced_effect_and_guardrails(self):
+        common = {
+            "induction_coherence_mean": 95.0,
+            "ablation_coherence_mean": 95.0,
+            "cap_hits": 0,
+        }
+        rows = [
+            {
+                **common,
+                "candidate_id": "a",
+                "layer_one_indexed": 4,
+                "position": -1,
+                "negative_ablation_kl": 0.02,
+                "balanced_normalized_effect": 0.4,
+            },
+            {
+                **common,
+                "candidate_id": "b",
+                "layer_one_indexed": 8,
+                "position": -2,
+                "negative_ablation_kl": 0.03,
+                "balanced_normalized_effect": 0.7,
+            },
+            {
+                **common,
+                "candidate_id": "ineligible",
+                "layer_one_indexed": 12,
+                "position": -1,
+                "negative_ablation_kl": 0.2,
+                "balanced_normalized_effect": 0.9,
+            },
+        ]
+        self.assertEqual(
+            select_prompt_direction_candidate(rows)["candidate_id"],
+            "b",
+        )
 
     def test_match_vector_norm(self):
         import torch
