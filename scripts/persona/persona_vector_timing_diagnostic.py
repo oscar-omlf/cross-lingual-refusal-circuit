@@ -40,6 +40,16 @@ def main() -> None:
         default=(0, 1, 2, 3, 4),
     )
     parser.add_argument("--coefficient", type=float, default=1.5)
+    parser.add_argument(
+        "--vector-variant",
+        choices=("response_avg_diff", "prompt_last_diff"),
+        default="response_avg_diff",
+    )
+    parser.add_argument(
+        "--match-response-vector-norm",
+        action="store_true",
+        help="Scale a noncanonical variant to the selected response vector's norm.",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--device", default="cuda")
@@ -55,6 +65,7 @@ def main() -> None:
 
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import (
+        match_vector_norm,
         sha256_file,
         steer_model_output_timed,
         write_jsonl,
@@ -75,12 +86,31 @@ def main() -> None:
 
     result_root = _resolve(Path(config["paths"]["results_root"]))
     trait_slug = config["trait"]["name"]
-    vector_path = result_root / "vector" / f"{trait_slug}_response_avg_diff.pt"
+    vector_path = (
+        result_root / "vector" / f"{trait_slug}_{args.vector_variant}.pt"
+    )
     vector_stack = torch.load(vector_path, map_location="cpu", weights_only=True)
     layer = int(vector_cfg["paper_layer"])
     if vector_stack.ndim != 2 or not 0 <= layer < vector_stack.shape[0]:
         raise ValueError(f"Unexpected vector stack shape {tuple(vector_stack.shape)}.")
     direction = vector_stack[layer]
+    source_norm = float(direction.float().norm().item())
+    norm_reference_path = None
+    if args.match_response_vector_norm:
+        if args.vector_variant == "response_avg_diff":
+            raise ValueError(
+                "--match-response-vector-norm is unnecessary for response_avg_diff."
+            )
+        norm_reference_path = (
+            result_root / "vector" / f"{trait_slug}_response_avg_diff.pt"
+        )
+        reference_stack = torch.load(
+            norm_reference_path,
+            map_location="cpu",
+            weights_only=True,
+        )
+        direction = match_vector_norm(direction, reference_stack[layer])
+    applied_norm = float(direction.float().norm().item())
 
     output_root = _resolve(args.output_root)
     responses_path = output_root / "responses.jsonl"
@@ -201,7 +231,18 @@ def main() -> None:
         "vector": {
             "path": str(vector_path.relative_to(ROOT)),
             "sha256": sha256_file(vector_path),
-            "variant": "response_avg_diff",
+            "variant": args.vector_variant,
+            "source_norm": source_norm,
+            "applied_norm": applied_norm,
+            "norm_reference": (
+                {
+                    "path": str(norm_reference_path.relative_to(ROOT)),
+                    "sha256": sha256_file(norm_reference_path),
+                    "variant": "response_avg_diff",
+                }
+                if norm_reference_path is not None
+                else None
+            ),
             "layer_one_indexed": layer,
             "steering_block_zero_indexed": block_index,
             "coefficient": args.coefficient,

@@ -326,3 +326,18 @@ def steer_model_output_timed(
     if isinstance(output, list) and output and torch.is_tensor(output[0]):
         return [add(output[0]), *output[1:]]
     return output
+
+
+def match_vector_norm(vector, reference):
+    """Scale ``vector`` to the nonzero L2 norm of ``reference``."""
+    import torch
+
+    vector = torch.as_tensor(vector)
+    reference = torch.as_tensor(reference)
+    if vector.ndim != 1 or reference.ndim != 1 or vector.shape != reference.shape:
+        raise ValueError("Norm matching requires same-shaped one-dimensional vectors.")
+    vector_norm = vector.float().norm()
+    reference_norm = reference.float().norm()
+    if not vector_norm > 0 or not reference_norm > 0:
+        raise ValueError("Norm matching requires nonzero vectors.")
+    return vector * (reference_norm / vector_norm).to(vector)

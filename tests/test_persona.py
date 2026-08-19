@@ -34,6 +34,7 @@ from refusal_circuit.persona import (
     extraction_specs,
     hf_hidden_state_to_tl_hook,
     make_system_prompt,
+    match_vector_norm,
     pair_is_effective,
     steer_model_output,
     steer_model_output_timed,
@@ -207,6 +208,22 @@ class PersonaProtocolTests(unittest.TestCase):
                 2.0,
                 timing="unknown",
             )
+
+    def test_match_vector_norm(self):
+        import torch
+
+        vector = torch.tensor([3.0, 4.0])
+        reference = torch.tensor([0.0, 10.0])
+        matched = match_vector_norm(vector, reference)
+        self.assertAlmostEqual(float(matched.norm().item()), 10.0, places=6)
+        self.assertTrue(
+            torch.allclose(
+                matched / matched.norm(),
+                vector / vector.norm(),
+            )
+        )
+        with self.assertRaises(ValueError):
+            match_vector_norm(torch.zeros(2), reference)
 
     def test_teacher_forced_prediction_mask_precedes_response_tokens(self):
         import torch
