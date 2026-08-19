@@ -468,6 +468,7 @@ def main() -> None:
         "status": "complete",
         "canonical_protocol": False,
         "claim_scope": "q0-q4 exploratory refusal-style prompt-direction search",
+        "behavior_protocol_id": config["protocol_id"],
         "git_commit": _git_commit(),
         "model": model_cfg,
         "extraction": {
@@ -522,6 +523,13 @@ def main() -> None:
                 "sha256": sha256_file(eval_path),
             },
         },
+        "outputs": [
+            {
+                "path": str(responses_path.relative_to(ROOT)),
+                "rows": len(behavior_rows),
+                "sha256": sha256_file(responses_path),
+            }
+        ],
         "wall_time_seconds": time.time() - started,
     }
     write_json(metadata_path, metadata)
