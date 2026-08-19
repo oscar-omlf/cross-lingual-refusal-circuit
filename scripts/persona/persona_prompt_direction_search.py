@@ -148,6 +148,9 @@ def main() -> None:
         dtype=model_cfg["dtype"],
         revision=model_cfg.get("revision"),
     )
+    # This experiment uses residual hooks only. Keeping native grouped-query
+    # attention avoids the per-head K/V expansion required by EAP tracing.
+    model.set_ungroup_grouped_query_attention(False)
     tokenizer = model.tokenizer
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -387,56 +390,52 @@ def main() -> None:
         )[:, -1].float()
 
     diagnostic_rows = []
-    model.set_ungroup_grouped_query_attention(False)
-    try:
-        for candidate in candidate_specs:
-            candidate_id = candidate["candidate_id"]
-            vector = vectors[candidate_id].to(
-                device=next(model.parameters()).device,
-                dtype=next(model.parameters()).dtype,
-            )
-            induced = generate(
-                negative_prompts,
-                hooks=addition_hooks(
-                    candidate["layer_one_indexed"],
-                    vector,
-                    coefficient=1.0,
-                    position=None,
-                ),
-            )
-            append_rows(
-                condition="negative_plus_raw_direction",
-                prompts=negative_prompts,
-                generations=induced,
-                candidate=candidate,
-            )
+    for candidate in candidate_specs:
+        candidate_id = candidate["candidate_id"]
+        vector = vectors[candidate_id].to(
+            device=next(model.parameters()).device,
+            dtype=next(model.parameters()).dtype,
+        )
+        induced = generate(
+            negative_prompts,
+            hooks=addition_hooks(
+                candidate["layer_one_indexed"],
+                vector,
+                coefficient=1.0,
+                position=None,
+            ),
+        )
+        append_rows(
+            condition="negative_plus_raw_direction",
+            prompts=negative_prompts,
+            generations=induced,
+            candidate=candidate,
+        )
 
-            ablation = all_layer_ablation_hooks(model, vector)
-            ablated = generate(positive_prompts, hooks=ablation)
-            with torch.inference_mode(), model.hooks(fwd_hooks=ablation):
-                ablated_negative_logits = model(
-                    negative_tokens,
-                    attention_mask=negative_attention_mask,
-                )[:, -1].float()
-            append_rows(
-                condition="positive_global_direction_ablation",
-                prompts=positive_prompts,
-                generations=ablated,
-                candidate=candidate,
-            )
-            negative_kl = functional.kl_div(
-                functional.log_softmax(ablated_negative_logits, dim=-1),
-                functional.softmax(clean_negative_logits, dim=-1),
-                reduction="batchmean",
-            )
-            diagnostic_rows.append(
-                {
-                    **candidate,
-                    "negative_ablation_kl": float(negative_kl.item()),
-                }
-            )
-    finally:
-        model.set_ungroup_grouped_query_attention(True)
+        ablation = all_layer_ablation_hooks(model, vector)
+        ablated = generate(positive_prompts, hooks=ablation)
+        with torch.inference_mode(), model.hooks(fwd_hooks=ablation):
+            ablated_negative_logits = model(
+                negative_tokens,
+                attention_mask=negative_attention_mask,
+            )[:, -1].float()
+        append_rows(
+            condition="positive_global_direction_ablation",
+            prompts=positive_prompts,
+            generations=ablated,
+            candidate=candidate,
+        )
+        negative_kl = functional.kl_div(
+            functional.log_softmax(ablated_negative_logits, dim=-1),
+            functional.softmax(clean_negative_logits, dim=-1),
+            reduction="batchmean",
+        )
+        diagnostic_rows.append(
+            {
+                **candidate,
+                "negative_ablation_kl": float(negative_kl.item()),
+            }
+        )
 
     write_jsonl(responses_path, behavior_rows)
     write_jsonl(diagnostics_path, diagnostic_rows)
