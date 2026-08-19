@@ -75,11 +75,13 @@ def main() -> None:
 
     import torch
     import torch.nn.functional as functional
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    from refusal_circuit.interventions import addition_hooks, all_layer_ablation_hooks
-    from refusal_circuit.model import load_model, tokenize_prompts
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import (
+        ablate_direction_from_inputs,
+        ablate_direction_from_output,
+        add_direction_to_inputs,
         align_effective_pairs,
         make_system_prompt,
         read_jsonl,
@@ -142,21 +144,21 @@ def main() -> None:
             path.unlink(missing_ok=True)
     output_root.mkdir(parents=True, exist_ok=True)
 
-    model = load_model(
+    tokenizer = AutoTokenizer.from_pretrained(
         model_cfg["name"],
-        device=args.device,
-        dtype=model_cfg["dtype"],
         revision=model_cfg.get("revision"),
     )
-    # This experiment uses residual hooks only. Keeping native grouped-query
-    # attention avoids the per-head K/V expansion required by EAP tracing.
-    model.set_ungroup_grouped_query_attention(False)
-    tokenizer = model.tokenizer
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
-    hidden_size = int(model.cfg.d_model)
-    hidden_state_count = int(model.cfg.n_layers) + 1
+    model = AutoModelForCausalLM.from_pretrained(
+        model_cfg["name"],
+        revision=model_cfg.get("revision"),
+        torch_dtype=getattr(torch, model_cfg["dtype"]),
+        low_cpu_mem_usage=True,
+    ).to(args.device).eval()
+    hidden_size = int(model.config.hidden_size)
+    hidden_state_count = int(model.config.num_hidden_layers) + 1
     if any(layer <= 0 or layer >= hidden_state_count for layer in args.layers):
         raise ValueError("A requested layer is outside the hidden-state stack.")
 
@@ -170,41 +172,48 @@ def main() -> None:
     }
     counts = {"positive": 0, "negative": 0}
     started = time.time()
-    prompts_by_polarity = {
-        "positive": [positive["prompt"] for positive, _negative in pairs],
-        "negative": [negative["prompt"] for _positive, negative in pairs],
-    }
-    for polarity, prompts in prompts_by_polarity.items():
-        for batch in _batches(prompts, args.activation_batch_size):
-            tokens, attention_mask = tokenize_prompts(model, batch, max_length=512)
-
-            def capture(layer: int):
-                def hook(activations, _hook):
-                    for position in args.positions:
-                        if abs(position) > activations.shape[1]:
-                            raise ValueError(
-                                f"position {position} exceeds prompt length "
-                                f"{activations.shape[1]}"
-                            )
-                        sums[polarity][(layer, position)].add_(
-                            activations[:, position]
-                            .detach()
-                            .float()
-                            .cpu()
-                            .double()
-                            .sum(dim=0)
+    extraction_rows = [
+        (polarity, row["prompt"])
+        for positive, negative in pairs
+        for polarity, row in (
+            ("positive", positive),
+            ("negative", negative),
+        )
+    ]
+    for batch in _batches(extraction_rows, args.activation_batch_size):
+        prompts = [prompt for _polarity, prompt in batch]
+        inputs = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            add_special_tokens=False,
+        )
+        inputs = {key: value.to(args.device) for key, value in inputs.items()}
+        with torch.inference_mode():
+            outputs = model(
+                **inputs,
+                output_hidden_states=True,
+                use_cache=False,
+                return_dict=True,
+            )
+        for row_index, (polarity, _prompt) in enumerate(batch):
+            for layer in args.layers:
+                hidden = outputs.hidden_states[layer]
+                for position in args.positions:
+                    if abs(position) > hidden.shape[1]:
+                        raise ValueError(
+                            f"position {position} exceeds prompt length "
+                            f"{hidden.shape[1]}"
                         )
-                    return activations
-
-                return hook
-
-            hooks = [
-                (f"blocks.{layer}.hook_resid_pre", capture(layer))
-                for layer in args.layers
-            ]
-            with torch.inference_mode(), model.hooks(fwd_hooks=hooks):
-                model(tokens, attention_mask=attention_mask)
-            counts[polarity] += len(batch)
+                    sums[polarity][(layer, position)].add_(
+                        hidden[row_index, position]
+                        .detach()
+                        .float()
+                        .cpu()
+                        .double()
+                    )
+            counts[polarity] += 1
+        del outputs
 
     vectors = {}
     positive_means = {}
@@ -285,18 +294,22 @@ def main() -> None:
             }
         )
 
-    def generate(prompts: list[str], hooks: list | None = None) -> list[dict]:
-        tokens, _attention_mask = tokenize_prompts(model, prompts, max_length=512)
-        prompt_width = int(tokens.shape[1])
-        with torch.inference_mode(), model.hooks(fwd_hooks=hooks or []):
+    def tokenize(prompts: list[str]):
+        encoded = tokenizer(prompts, return_tensors="pt", padding=True)
+        return {key: value.to(args.device) for key, value in encoded.items()}
+
+    def generate(prompts: list[str]) -> list[dict]:
+        inputs = tokenize(prompts)
+        prompt_width = int(inputs["input_ids"].shape[1])
+        with torch.inference_mode():
             generated = model.generate(
-                tokens,
-                max_new_tokens=args.max_new_tokens,
-                stop_at_eos=True,
+                **inputs,
                 do_sample=False,
-                use_past_kv_cache=True,
-                return_type="tokens",
-                verbose=False,
+                max_new_tokens=args.max_new_tokens,
+                min_new_tokens=1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                use_cache=True,
             )
         results = []
         for sequence in generated:
@@ -378,33 +391,26 @@ def main() -> None:
         candidate=None,
     )
 
-    negative_tokens, negative_attention_mask = tokenize_prompts(
-        model,
-        negative_prompts,
-        max_length=512,
-    )
+    negative_inputs = tokenize(negative_prompts)
     with torch.inference_mode():
-        clean_negative_logits = model(
-            negative_tokens,
-            attention_mask=negative_attention_mask,
-        )[:, -1].float()
+        clean_negative_logits = model(**negative_inputs).logits[:, -1].float()
 
     diagnostic_rows = []
     for candidate in candidate_specs:
         candidate_id = candidate["candidate_id"]
         vector = vectors[candidate_id].to(
-            device=next(model.parameters()).device,
+            device=args.device,
             dtype=next(model.parameters()).dtype,
         )
-        induced = generate(
-            negative_prompts,
-            hooks=addition_hooks(
-                candidate["layer_one_indexed"],
-                vector,
-                coefficient=1.0,
-                position=None,
-            ),
+        source_block = model.model.layers[candidate["layer_one_indexed"]]
+        addition_handle = source_block.register_forward_pre_hook(
+            lambda _module, inputs, value=vector:
+            add_direction_to_inputs(inputs, value)
         )
+        try:
+            induced = generate(negative_prompts)
+        finally:
+            addition_handle.remove()
         append_rows(
             condition="negative_plus_raw_direction",
             prompts=negative_prompts,
@@ -412,13 +418,31 @@ def main() -> None:
             candidate=candidate,
         )
 
-        ablation = all_layer_ablation_hooks(model, vector)
-        ablated = generate(positive_prompts, hooks=ablation)
-        with torch.inference_mode(), model.hooks(fwd_hooks=ablation):
-            ablated_negative_logits = model(
-                negative_tokens,
-                attention_mask=negative_attention_mask,
-            )[:, -1].float()
+        ablation_handles = []
+        for block in model.model.layers:
+            ablation_handles.extend(
+                [
+                    block.register_forward_pre_hook(
+                        lambda _module, inputs, value=vector:
+                        ablate_direction_from_inputs(inputs, value)
+                    ),
+                    block.self_attn.register_forward_hook(
+                        lambda _module, _inputs, output, value=vector:
+                        ablate_direction_from_output(output, value)
+                    ),
+                    block.mlp.register_forward_hook(
+                        lambda _module, _inputs, output, value=vector:
+                        ablate_direction_from_output(output, value)
+                    ),
+                ]
+            )
+        try:
+            ablated = generate(positive_prompts)
+            with torch.inference_mode():
+                ablated_negative_logits = model(**negative_inputs).logits[:, -1].float()
+        finally:
+            for handle in ablation_handles:
+                handle.remove()
         append_rows(
             condition="positive_global_direction_ablation",
             prompts=positive_prompts,

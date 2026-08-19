@@ -360,6 +360,26 @@ def add_direction_to_output(output, vector, coefficient: float = 1.0):
     return output
 
 
+def add_direction_to_inputs(inputs, vector, coefficient: float = 1.0):
+    """Add a raw direction to every position in a module's hidden-state input."""
+    import torch
+
+    if not isinstance(inputs, tuple) or not inputs or not torch.is_tensor(inputs[0]):
+        raise ValueError("expected hidden states as the first positional input")
+    hidden = inputs[0]
+    direction = torch.as_tensor(
+        vector,
+        dtype=hidden.dtype,
+        device=hidden.device,
+    )
+    if direction.ndim != 1 or direction.numel() != hidden.shape[-1]:
+        raise ValueError("direction shape does not match the hidden dimension")
+    return (
+        hidden + float(coefficient) * direction,
+        *inputs[1:],
+    )
+
+
 def ablate_direction_from_output(output, vector):
     """Remove a unit direction from every sequence position in a layer output."""
     import torch
@@ -383,6 +403,28 @@ def ablate_direction_from_output(output, vector):
     if isinstance(output, list) and output and torch.is_tensor(output[0]):
         return [ablate(output[0]), *output[1:]]
     return output
+
+
+def ablate_direction_from_inputs(inputs, vector):
+    """Remove a unit direction from a module's hidden-state input."""
+    import torch
+
+    if not isinstance(inputs, tuple) or not inputs or not torch.is_tensor(inputs[0]):
+        raise ValueError("expected hidden states as the first positional input")
+    hidden = inputs[0]
+    direction = torch.as_tensor(
+        vector,
+        dtype=hidden.dtype,
+        device=hidden.device,
+    )
+    if direction.ndim != 1 or direction.numel() != hidden.shape[-1]:
+        raise ValueError("direction shape does not match the hidden dimension")
+    unit = direction / direction.float().norm().clamp_min(1e-8).to(direction)
+    coefficient = torch.einsum("...d,d->...", hidden, unit)
+    return (
+        hidden - coefficient.unsqueeze(-1) * unit,
+        *inputs[1:],
+    )
 
 
 def select_prompt_direction_candidate(

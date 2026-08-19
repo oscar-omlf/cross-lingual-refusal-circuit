@@ -28,7 +28,9 @@ from refusal_circuit.graph import (
 from refusal_circuit.model import memory_efficient_complex_attn_linear
 from refusal_circuit.persona import (
     COHERENCE_PROMPT,
+    ablate_direction_from_inputs,
     ablate_direction_from_output,
+    add_direction_to_inputs,
     add_direction_to_output,
     aggregate_numeric_logprobs,
     align_effective_pairs,
@@ -251,6 +253,35 @@ class PersonaProtocolTests(unittest.TestCase):
             )
         )
         self.assertTrue(torch.equal(original, torch.tensor([[[3.0, 4.0], [6.0, 8.0]]])))
+
+    def test_prompt_direction_input_interventions(self):
+        import torch
+
+        original = torch.tensor([[[3.0, 4.0], [6.0, 8.0]]])
+        untouched = torch.tensor([7])
+        added = add_direction_to_inputs(
+            (original, untouched),
+            torch.tensor([1.0, 0.0]),
+            2.0,
+        )
+        self.assertTrue(
+            torch.equal(
+                added[0],
+                torch.tensor([[[5.0, 4.0], [8.0, 8.0]]]),
+            )
+        )
+        self.assertIs(added[1], untouched)
+        ablated = ablate_direction_from_inputs(
+            (original, untouched),
+            torch.tensor([1.0, 0.0]),
+        )
+        self.assertTrue(
+            torch.equal(
+                ablated[0],
+                torch.tensor([[[0.0, 4.0], [0.0, 8.0]]]),
+            )
+        )
+        self.assertIs(ablated[1], untouched)
 
     def test_prompt_direction_selection_uses_balanced_effect_and_guardrails(self):
         common = {
