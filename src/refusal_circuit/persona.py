@@ -281,3 +281,48 @@ def steer_model_output(output, vector, coefficient: float, *, positions: str = "
     if isinstance(output, list) and output and torch.is_tensor(output[0]):
         return [add(output[0]), *output[1:]]
     return output
+
+
+def steer_model_output_timed(
+    output,
+    vector,
+    coefficient: float,
+    *,
+    timing: str,
+):
+    """Apply a vector at prompt end, response decoding, or both.
+
+    Cached generation has one prefill call with sequence length greater than
+    one, followed by single-token decoding calls. This diagnostic uses that
+    boundary to separate trait initiation from response-time maintenance.
+    """
+    import torch
+
+    if timing not in {"prompt_end_only", "response_only", "recurrent"}:
+        raise ValueError(
+            "timing must be 'prompt_end_only', 'response_only', or 'recurrent'"
+        )
+
+    def add(tensor):
+        steer = torch.as_tensor(vector, dtype=tensor.dtype, device=tensor.device)
+        if steer.ndim != 1 or steer.numel() != tensor.shape[-1]:
+            raise ValueError("steering vector shape does not match the hidden dimension")
+        is_prefill = tensor.shape[1] > 1
+        should_apply = (
+            timing == "recurrent"
+            or (timing == "prompt_end_only" and is_prefill)
+            or (timing == "response_only" and not is_prefill)
+        )
+        if not should_apply:
+            return tensor
+        changed = tensor.clone()
+        changed[:, -1, :] += float(coefficient) * steer
+        return changed
+
+    if torch.is_tensor(output):
+        return add(output)
+    if isinstance(output, tuple) and output and torch.is_tensor(output[0]):
+        return (add(output[0]), *output[1:])
+    if isinstance(output, list) and output and torch.is_tensor(output[0]):
+        return [add(output[0]), *output[1:]]
+    return output

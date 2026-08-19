@@ -36,6 +36,7 @@ from refusal_circuit.persona import (
     make_system_prompt,
     pair_is_effective,
     steer_model_output,
+    steer_model_output_timed,
     token_ids_sha256,
 )
 
@@ -130,6 +131,82 @@ class PersonaProtocolTests(unittest.TestCase):
         self.assertTrue(torch.equal(steered[:, :-1], original[:, :-1]))
         self.assertTrue(torch.equal(steered[:, -1], torch.full((2, 4), 2.0)))
         self.assertTrue(torch.equal(original, torch.zeros_like(original)))
+
+    def test_timed_steering_separates_prefill_and_decode(self):
+        import torch
+
+        vector = torch.ones(4)
+        prefill = torch.zeros(2, 3, 4)
+        decode = torch.zeros(2, 1, 4)
+
+        prompt_only_prefill = steer_model_output_timed(
+            prefill,
+            vector,
+            2.0,
+            timing="prompt_end_only",
+        )
+        prompt_only_decode = steer_model_output_timed(
+            decode,
+            vector,
+            2.0,
+            timing="prompt_end_only",
+        )
+        self.assertTrue(
+            torch.equal(
+                prompt_only_prefill[:, -1],
+                torch.full((2, 4), 2.0),
+            )
+        )
+        self.assertTrue(torch.equal(prompt_only_decode, decode))
+
+        response_only_prefill = steer_model_output_timed(
+            prefill,
+            vector,
+            2.0,
+            timing="response_only",
+        )
+        response_only_decode = steer_model_output_timed(
+            decode,
+            vector,
+            2.0,
+            timing="response_only",
+        )
+        self.assertTrue(torch.equal(response_only_prefill, prefill))
+        self.assertTrue(
+            torch.equal(
+                response_only_decode[:, -1],
+                torch.full((2, 4), 2.0),
+            )
+        )
+
+        recurrent_prefill = steer_model_output_timed(
+            prefill,
+            vector,
+            2.0,
+            timing="recurrent",
+        )
+        recurrent_decode = steer_model_output_timed(
+            decode,
+            vector,
+            2.0,
+            timing="recurrent",
+        )
+        self.assertTrue(
+            torch.equal(recurrent_prefill[:, -1], torch.full((2, 4), 2.0))
+        )
+        self.assertTrue(
+            torch.equal(recurrent_decode[:, -1], torch.full((2, 4), 2.0))
+        )
+        self.assertTrue(torch.equal(prefill, torch.zeros_like(prefill)))
+        self.assertTrue(torch.equal(decode, torch.zeros_like(decode)))
+
+        with self.assertRaises(ValueError):
+            steer_model_output_timed(
+                prefill,
+                vector,
+                2.0,
+                timing="unknown",
+            )
 
     def test_teacher_forced_prediction_mask_precedes_response_tokens(self):
         import torch
