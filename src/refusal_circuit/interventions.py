@@ -59,6 +59,26 @@ def direction_ablation_hook(
     return hook
 
 
+def direction_coordinate_clamp_hook(
+    direction: torch.Tensor,
+    *,
+    target_coordinate: float,
+    position: int | None = None,
+) -> Callable:
+    """Clamp a direction coordinate to a fixed affine reference value."""
+
+    def hook(activations: torch.Tensor, hook) -> torch.Tensor:
+        vector = normalized(direction, activations)
+        selected = _selected_positions(activations, position)
+        coordinate = torch.einsum("...d,d->...", selected, vector)
+        replacement = selected + (
+            float(target_coordinate) - coordinate
+        ).unsqueeze(-1) * vector
+        return _replace_selected_positions(activations, replacement, position)
+
+    return hook
+
+
 def activation_addition_hook(
     vector: torch.Tensor,
     *,

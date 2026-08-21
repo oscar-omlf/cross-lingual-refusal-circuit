@@ -35,6 +35,7 @@ from refusal_circuit.persona import (
     aggregate_numeric_logprobs,
     align_effective_pairs,
     behavioral_circuit_summary,
+    edit_direction_output,
     extraction_specs,
     hf_hidden_state_to_tl_hook,
     make_system_prompt,
@@ -253,6 +254,39 @@ class PersonaProtocolTests(unittest.TestCase):
             )
         )
         self.assertTrue(torch.equal(original, torch.tensor([[[3.0, 4.0], [6.0, 8.0]]])))
+
+    def test_matched_direction_geometry_edits(self):
+        import torch
+
+        original = torch.tensor([[[3.0, 4.0], [6.0, 8.0]]])
+        vector = torch.tensor([2.0, 0.0])
+        projected = edit_direction_output(
+            original,
+            vector,
+            mode="zero_projection",
+        )
+        clamped = edit_direction_output(
+            original,
+            vector,
+            mode="negative_centroid_clamp",
+            negative_coordinate=-1.0,
+        )
+        shifted = edit_direction_output(
+            original,
+            vector,
+            mode="centroid_shift",
+        )
+        self.assertTrue(
+            torch.equal(projected, torch.tensor([[[0.0, 4.0], [0.0, 8.0]]]))
+        )
+        self.assertTrue(
+            torch.equal(clamped, torch.tensor([[[-1.0, 4.0], [-1.0, 8.0]]]))
+        )
+        self.assertTrue(
+            torch.equal(shifted, torch.tensor([[[1.0, 4.0], [4.0, 8.0]]]))
+        )
+        with self.assertRaises(ValueError):
+            edit_direction_output(original, vector, mode="negative_centroid_clamp")
 
     def test_prompt_direction_input_interventions(self):
         import torch

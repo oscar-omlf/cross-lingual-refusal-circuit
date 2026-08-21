@@ -405,6 +405,45 @@ def ablate_direction_from_output(output, vector):
     return output
 
 
+def edit_direction_output(
+    output,
+    vector,
+    *,
+    mode: str,
+    negative_coordinate: float | None = None,
+):
+    """Apply one matched direction-geometry edit to every active position."""
+    import torch
+
+    if mode not in {
+        "zero_projection",
+        "negative_centroid_clamp",
+        "centroid_shift",
+    }:
+        raise ValueError(f"unknown direction edit mode {mode!r}")
+    if mode == "negative_centroid_clamp" and negative_coordinate is None:
+        raise ValueError("negative centroid clamp requires negative_coordinate")
+
+    def edit(tensor):
+        raw = torch.as_tensor(vector, dtype=tensor.dtype, device=tensor.device)
+        if raw.ndim != 1 or raw.numel() != tensor.shape[-1]:
+            raise ValueError("direction shape does not match the hidden dimension")
+        if mode == "centroid_shift":
+            return tensor - raw
+        unit = raw / raw.float().norm().clamp_min(1e-8).to(raw)
+        coordinate = torch.einsum("...d,d->...", tensor, unit)
+        target = 0.0 if mode == "zero_projection" else float(negative_coordinate)
+        return tensor + (target - coordinate).unsqueeze(-1) * unit
+
+    if torch.is_tensor(output):
+        return edit(output)
+    if isinstance(output, tuple) and output and torch.is_tensor(output[0]):
+        return (edit(output[0]), *output[1:])
+    if isinstance(output, list) and output and torch.is_tensor(output[0]):
+        return [edit(output[0]), *output[1:]]
+    return output
+
+
 def ablate_direction_from_inputs(inputs, vector):
     """Remove a unit direction from a module's hidden-state input."""
     import torch
