@@ -218,11 +218,21 @@ def extract_vector(config: dict, *, overwrite: bool = False) -> dict:
         ).float()
         raw_directions = positive_means - negative_means
         norms = raw_directions.norm(dim=-1, keepdim=True)
-        if not torch.isfinite(raw_directions).all() or (norms <= 0).any():
+        if not torch.isfinite(raw_directions).all():
             raise RuntimeError(
-                "Extracted paired prompt directions are non-finite or zero."
+                "Extracted paired prompt directions contain non-finite values."
             )
-        directions = raw_directions / norms
+        valid = norms.squeeze(-1) > 0
+        if not valid.any():
+            raise RuntimeError("All extracted paired prompt directions are zero.")
+        directions = torch.zeros_like(raw_directions)
+        directions[valid] = raw_directions[valid] / norms[valid]
+        valid_layers = [
+            layer for layer, is_valid in zip(layers, valid.tolist()) if is_valid
+        ]
+        zero_norm_layers = [
+            layer for layer, is_valid in zip(layers, valid.tolist()) if not is_valid
+        ]
 
         torch.save(directions, paths["directions"])
         torch.save(raw_directions, paths["raw_directions"])
@@ -246,6 +256,9 @@ def extract_vector(config: dict, *, overwrite: bool = False) -> dict:
             "base_prompts": len(rows),
             "formatted_prompts_per_polarity": len(rows),
             "layers": layers,
+            "valid_layers": valid_layers,
+            "zero_norm_layers": zero_norm_layers,
+            "direction_norms": norms.squeeze(-1).tolist(),
             "position": position,
             "target_hooks": [
                 f"blocks.{layer}.hook_resid_pre" for layer in layers

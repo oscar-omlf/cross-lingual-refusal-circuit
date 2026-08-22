@@ -116,7 +116,7 @@ class PairedPromptVectorTests(unittest.TestCase):
                 cfg=SimpleNamespace(n_layers=2),
             )
             positive = {
-                (0, -1): torch.tensor([3.0, 4.0]),
+                (0, -1): torch.tensor([0.0, 0.0]),
                 (1, -1): torch.tensor([5.0, 7.0]),
             }
             negative = {
@@ -143,17 +143,20 @@ class PairedPromptVectorTests(unittest.TestCase):
             self.assertTrue(
                 torch.equal(
                     raw,
-                    torch.tensor([[3.0, 4.0], [3.0, 4.0]]),
+                    torch.tensor([[0.0, 0.0], [3.0, 4.0]]),
                 )
             )
             self.assertTrue(
                 torch.allclose(
                     unit,
-                    torch.tensor([[0.6, 0.8], [0.6, 0.8]]),
+                    torch.tensor([[0.0, 0.0], [0.6, 0.8]]),
                 )
             )
             self.assertEqual(metadata["base_prompts"], 2)
             self.assertEqual(metadata["layers"], [0, 1])
+            self.assertEqual(metadata["valid_layers"], [1])
+            self.assertEqual(metadata["zero_norm_layers"], [0])
+            self.assertEqual(metadata["direction_norms"], [0.0, 5.0])
             self.assertEqual(metadata["assistant_name"], "sycophantic")
             self.assertEqual(
                 metadata["instruction_pair_counts"],
