@@ -1,49 +1,26 @@
 #!/usr/bin/env python3
-"""Compare matched projection, affine clamp, and centroid steering edits."""
+"""Minimal Qwen-only comparison of three frozen behavior directions."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 from pathlib import Path
 
 from _bootstrap import ROOT
-
-
-MODES = (
-    "zero_projection",
-    "negative_centroid_clamp",
-    "centroid_shift",
-)
 
 
 def _resolve(path: Path) -> Path:
     return path if path.is_absolute() else ROOT / path
 
 
-def _git_commit() -> str:
-    return subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
-        cwd=ROOT,
-        text=True,
-    ).strip()
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=ROOT / "configs/qwen_sycophancy.json",
-    )
-    parser.add_argument(
-        "--baseline-root",
-        type=Path,
-        required=True,
-        help="Completed q0-q4 prompt-direction search containing reusable baselines.",
-    )
-    parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument("--config", type=Path, default=ROOT / "configs/qwen_sycophancy.json")
+    parser.add_argument("--baseline-root", type=Path, required=True)
+    parser.add_argument("--num-refusal-prompts", type=int, default=5)
+    parser.add_argument("--sycophancy-max-new-tokens", type=int, default=512)
+    parser.add_argument("--refusal-max-new-tokens", type=int, default=64)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--overwrite", action="store_true")
@@ -52,265 +29,314 @@ def main() -> None:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
+    from refusal_circuit.metrics import is_refusal, refusal_log_odds
     from refusal_circuit.paths import write_json
     from refusal_circuit.persona import (
+        add_direction_to_output,
         edit_direction_output,
         read_jsonl,
         sha256_file,
         write_jsonl,
     )
 
-    if args.max_new_tokens <= 0:
-        raise ValueError("--max-new-tokens must be positive")
-    if args.device.startswith("cuda") and not torch.cuda.is_available():
-        raise RuntimeError("Direction geometry diagnostic requires a CUDA device.")
-
-    config_path = _resolve(args.config)
-    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config = json.loads(_resolve(args.config).read_text(encoding="utf-8"))
     model_cfg = config["model"]
     baseline_root = _resolve(args.baseline_root)
     baseline_path = baseline_root / "responses.jsonl"
-    baseline_metadata_path = baseline_root / "metadata.json"
-    baseline_metadata = json.loads(
-        baseline_metadata_path.read_text(encoding="utf-8")
-    )
-    if baseline_metadata["artifacts"]["responses"]["sha256"] != sha256_file(
-        baseline_path
-    ):
-        raise ValueError("baseline response hash differs from its metadata")
-    baseline_rows = read_jsonl(baseline_path)
-    reusable = [
-        row
-        for row in baseline_rows
+    baseline_meta = json.loads((baseline_root / "metadata.json").read_text())
+    if baseline_meta["artifacts"]["responses"]["sha256"] != sha256_file(baseline_path):
+        raise ValueError("baseline hash mismatch")
+    baselines = [
+        row for row in read_jsonl(baseline_path)
         if row["condition"] in {"baseline_positive", "baseline_negative"}
     ]
-    if len(reusable) != 10:
-        raise ValueError("expected five positive and five negative baseline rows")
     positives = sorted(
-        (row for row in reusable if row["condition"] == "baseline_positive"),
+        (row for row in baselines if row["condition"] == "baseline_positive"),
         key=lambda row: int(row["question_index"]),
     )
-    negatives = sorted(
-        (row for row in reusable if row["condition"] == "baseline_negative"),
-        key=lambda row: int(row["question_index"]),
-    )
-    if [row["question_index"] for row in positives] != list(range(5)):
-        raise ValueError("positive baseline must contain q0-q4")
-    if [row["question_index"] for row in negatives] != list(range(5)):
-        raise ValueError("negative baseline must contain q0-q4")
+    if len(baselines) != 10 or len(positives) != 5:
+        raise ValueError("expected q0-q4 positive/negative baselines")
 
     output_root = _resolve(args.output_root)
-    responses_path = output_root / "responses.jsonl"
+    syc_path = output_root / "sycophancy_responses.jsonl"
+    refusal_path = output_root / "refusal_summary.json"
     metadata_path = output_root / "metadata.json"
     if output_root.exists() and any(output_root.iterdir()):
         if not args.overwrite:
-            raise FileExistsError(f"{output_root} already contains output")
-        responses_path.unlink(missing_ok=True)
-        metadata_path.unlink(missing_ok=True)
+            raise FileExistsError(output_root)
+        for path in (syc_path, refusal_path, metadata_path):
+            path.unlink(missing_ok=True)
     output_root.mkdir(parents=True, exist_ok=True)
-    write_jsonl(responses_path, reusable)
+    write_jsonl(syc_path, baselines)
 
     tokenizer = AutoTokenizer.from_pretrained(
-        model_cfg["name"],
-        revision=model_cfg.get("revision"),
+        model_cfg["name"], revision=model_cfg.get("revision")
     )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "left"
     model = AutoModelForCausalLM.from_pretrained(
         model_cfg["name"],
         revision=model_cfg.get("revision"),
         torch_dtype=getattr(torch, model_cfg["dtype"]),
         low_cpu_mem_usage=True,
     ).to(args.device).eval()
+    dtype = next(model.parameters()).dtype
+
+    def generate(prompt, block, hook_fn, max_new_tokens):
+        inputs = tokenizer(prompt, return_tensors="pt")
+        inputs = {key: value.to(args.device) for key, value in inputs.items()}
+        prompt_length = int(inputs["input_ids"].shape[1])
+        handle = block.register_forward_hook(hook_fn) if hook_fn else None
+        try:
+            with torch.inference_mode():
+                output = model.generate(
+                    **inputs,
+                    do_sample=False,
+                    max_new_tokens=max_new_tokens,
+                    min_new_tokens=1,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    use_cache=True,
+                )
+        finally:
+            if handle:
+                handle.remove()
+        return output[0, prompt_length:].tolist()
+
     vector_root = _resolve(Path(config["paths"]["results_root"])) / "vector"
-    vector_specs = (
-        {
-            "name": "prompt",
-            "layer": 16,
-            "vector": vector_root / "sycophantic_prompt_last_diff.pt",
-            "positive_mean": vector_root / "sycophantic_prompt_last_pos_mean.pt",
-            "negative_mean": vector_root / "sycophantic_prompt_last_neg_mean.pt",
-        },
-        {
-            "name": "response",
-            "layer": 20,
-            "vector": vector_root / "sycophantic_response_avg_diff.pt",
-            "positive_mean": vector_root / "sycophantic_response_avg_pos_mean.pt",
-            "negative_mean": vector_root / "sycophantic_response_avg_neg_mean.pt",
-        },
+    syc_specs = (
+        ("prompt", 16, "prompt_last", -1.0),
+        ("response", 20, "response_avg", -2.0),
     )
-
-    vector_metadata = []
-    for spec in vector_specs:
-        layer = int(spec["layer"])
-        raw_stack = torch.load(
-            spec["vector"], map_location="cpu", weights_only=True
-        )
-        positive_stack = torch.load(
-            spec["positive_mean"], map_location="cpu", weights_only=True
-        )
-        negative_stack = torch.load(
-            spec["negative_mean"], map_location="cpu", weights_only=True
-        )
-        raw = raw_stack[layer].float()
-        positive_mean = positive_stack[layer].float()
-        negative_mean = negative_stack[layer].float()
+    vector_report = []
+    for name, layer, stem, normal_coefficient in syc_specs:
+        raw_path = vector_root / f"sycophantic_{stem}_diff.pt"
+        pos_path = vector_root / f"sycophantic_{stem}_pos_mean.pt"
+        neg_path = vector_root / f"sycophantic_{stem}_neg_mean.pt"
+        raw = torch.load(raw_path, map_location="cpu", weights_only=True)[layer].float()
+        pos = torch.load(pos_path, map_location="cpu", weights_only=True)[layer].float()
+        neg = torch.load(neg_path, map_location="cpu", weights_only=True)[layer].float()
         unit = raw / raw.norm()
-        positive_coordinate = float(positive_mean @ unit)
-        negative_coordinate = float(negative_mean @ unit)
-        raw = raw.to(
-            device=args.device,
-            dtype=next(model.parameters()).dtype,
-        )
+        pos_coordinate = float(pos @ unit)
+        neg_coordinate = float(neg @ unit)
+        raw_device = raw.to(args.device, dtype=dtype)
         block = model.model.layers[layer - 1]
-
-        for mode in MODES:
-            for source in positives:
-                captures = {"prefill": None, "decode": []}
-
-                def hook(_module, _inputs, output):
-                    changed = edit_direction_output(
+        generated = {}
+        for condition, edit_mode in (
+            ("zero_projection", "zero_projection"),
+            ("negative_centroid_clamp", "negative_centroid_clamp"),
+            ("centroid_matched_steering", "centroid_shift"),
+        ):
+            generated[condition] = [
+                generate(
+                    source["prompt"],
+                    block,
+                    lambda _m, _i, output, mode=edit_mode: edit_direction_output(
                         output,
-                        raw,
+                        raw_device,
                         mode=mode,
-                        negative_coordinate=negative_coordinate,
-                    )
-                    tensor = (
-                        changed
-                        if torch.is_tensor(changed)
-                        else changed[0]
-                    )
-                    coordinate = torch.einsum(
-                        "...d,d->...",
-                        tensor.float(),
-                        unit.to(tensor.device),
-                    )
-                    if tensor.shape[1] > 1:
-                        captures["prefill"] = float(coordinate[0, -1].item())
-                    else:
-                        captures["decode"].append(float(coordinate[0, -1].item()))
-                    return changed
-
-                inputs = tokenizer(source["prompt"], return_tensors="pt")
-                inputs = {key: value.to(args.device) for key, value in inputs.items()}
-                prompt_length = int(inputs["input_ids"].shape[1])
-                handle = block.register_forward_hook(hook)
-                try:
-                    with torch.inference_mode():
-                        generated = model.generate(
-                            **inputs,
-                            do_sample=False,
-                            max_new_tokens=args.max_new_tokens,
-                            min_new_tokens=1,
-                            pad_token_id=tokenizer.pad_token_id,
-                            eos_token_id=tokenizer.eos_token_id,
-                            use_cache=True,
-                        )
-                finally:
-                    handle.remove()
-                token_ids = generated[0, prompt_length:].tolist()
+                        negative_coordinate=neg_coordinate,
+                    ),
+                    args.sycophancy_max_new_tokens,
+                )
+                for source in positives
+            ]
+        if normal_coefficient == -1.0:
+            generated["normal_steering"] = generated["centroid_matched_steering"]
+        else:
+            generated["normal_steering"] = [
+                generate(
+                    source["prompt"],
+                    block,
+                    lambda _m, _i, output: add_direction_to_output(
+                        output, raw_device, coefficient=normal_coefficient
+                    ),
+                    args.sycophancy_max_new_tokens,
+                )
+                for source in positives
+            ]
+        for condition, token_lists in generated.items():
+            for source, token_ids in zip(positives, token_lists, strict=True):
                 row = {
-                    key: value
-                    for key, value in source.items()
-                    if key
-                    not in {
-                        "record_id",
-                        "condition",
-                        "answer",
-                        "generated_token_count",
-                        "hit_max_new_tokens",
+                    key: value for key, value in source.items()
+                    if key not in {
+                        "record_id", "condition", "answer",
+                        "generated_token_count", "hit_max_new_tokens",
                         "terminated_with_eos",
                     }
                 }
-                condition = f"{spec['name']}_{mode}"
                 row.update(
                     {
-                        "record_id": (
-                            f"direction-geometry-{condition}-"
-                            f"q{int(source['question_index']):02d}"
-                        ),
-                        "condition": condition,
-                        "answer": tokenizer.decode(
-                            token_ids,
-                            skip_special_tokens=True,
-                        ),
+                        "record_id": f"qwen-geometry-{name}-{condition}-q{int(source['question_index']):02d}",
+                        "condition": f"{name}_{condition}",
+                        "answer": tokenizer.decode(token_ids, skip_special_tokens=True),
                         "generated_token_count": len(token_ids),
-                        "hit_max_new_tokens": len(token_ids)
-                        >= args.max_new_tokens,
+                        "hit_max_new_tokens": len(token_ids) >= args.sycophancy_max_new_tokens,
                         "terminated_with_eos": bool(
                             tokenizer.eos_token_id is not None
-                            and token_ids
-                            and token_ids[-1] == tokenizer.eos_token_id
+                            and token_ids and token_ids[-1] == tokenizer.eos_token_id
                         ),
-                        "vector_variant": spec["name"],
-                        "edit_mode": mode,
+                        "vector_variant": name,
+                        "edit_mode": condition,
                         "layer_one_indexed": layer,
-                        "prefill_last_coordinate_after": captures["prefill"],
-                        "response_coordinate_after_mean": (
-                            sum(captures["decode"]) / len(captures["decode"])
-                            if captures["decode"]
+                        "normal_steering_coefficient": (
+                            normal_coefficient if condition == "normal_steering" else None
+                        ),
+                        "generation_reused_from": (
+                            "centroid_matched_steering"
+                            if condition == "normal_steering" and normal_coefficient == -1.0
                             else None
                         ),
-                        "response_coordinate_samples": len(captures["decode"]),
                     }
                 )
-                write_jsonl(responses_path, [row], mode="a")
-
-        vector_metadata.append(
+                write_jsonl(syc_path, [row], mode="a")
+        vector_report.append(
             {
-                "variant": spec["name"],
+                "trait": "sycophancy",
+                "variant": name,
                 "layer_one_indexed": layer,
-                "raw_norm": float(raw.float().norm().item()),
-                "positive_coordinate": positive_coordinate,
-                "negative_coordinate": negative_coordinate,
-                "zero_fraction_from_negative": (
-                    -negative_coordinate
-                    / (positive_coordinate - negative_coordinate)
-                ),
-                "artifacts": {
-                    key: {
-                        "path": str(spec[key].relative_to(ROOT)),
-                        "sha256": sha256_file(spec[key]),
-                    }
-                    for key in ("vector", "positive_mean", "negative_mean")
-                },
+                "raw_norm": float(raw.norm()),
+                "positive_coordinate": pos_coordinate,
+                "negative_coordinate": neg_coordinate,
+                "zero_fraction_from_negative": -neg_coordinate / (pos_coordinate - neg_coordinate),
+                "normal_steering_coefficient": normal_coefficient,
             }
         )
 
-    final = read_jsonl(responses_path)
-    if len(final) != 40 or len({row["record_id"] for row in final}) != 40:
-        raise RuntimeError(f"incomplete geometry diagnostic: {len(final)}/40")
-    metadata = {
-        "schema_version": 1,
-        "status": "complete",
-        "canonical_protocol": False,
-        "claim_scope": "q0-q4 matched direction-geometry development diagnostic",
-        "behavior_protocol_id": config["protocol_id"],
-        "git_commit": _git_commit(),
-        "model": model_cfg,
-        "vectors": vector_metadata,
-        "modes": list(MODES),
-        "intervention_timing": (
-            "native layer output, every active prefill position and every "
-            "cached decoding call"
-        ),
-        "baseline": {
-            "source": str(baseline_path.relative_to(ROOT)),
-            "sha256": sha256_file(baseline_path),
-            "reused_conditions": ["baseline_positive", "baseline_negative"],
-        },
-        "decoding": {
-            "do_sample": False,
-            "max_new_tokens": args.max_new_tokens,
-        },
-        "outputs": [
+    refusal_root = ROOT / "results/qwen2.5-7b-instruct/polyrefuse/en/direction_paper_kl0p2"
+    refusal_meta = json.loads(
+        (refusal_root / "refusal_direction_metadata.json").read_text()
+    )
+    refusal_unit = torch.load(
+        refusal_root / "refusal_direction.pt", map_location="cpu", weights_only=True
+    ).float()
+    refusal_raw = refusal_unit * float(refusal_meta["raw_direction_norm"])
+    refusal_raw_device = refusal_raw.to(args.device, dtype=dtype)
+    refusal_negative = float(
+        refusal_meta["selected_validation"]["clean_harmless_projection"]
+    )
+    refusal_layer = int(refusal_meta["layer"])
+    refusal_block = model.model.layers[refusal_layer - 1]
+    refusal_data = [
+        row for row in read_jsonl(
+            ROOT / "data/processed/qwen2.5-7b-instruct/polyrefuse/en/val.jsonl"
+        )
+        if row["label"] == "harmful"
+    ][: args.num_refusal_prompts]
+    refusal_prompts = [
+        tokenizer.apply_chat_template(
+            [{"role": "user", "content": row["instruction"]}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        for row in refusal_data
+    ]
+    refusal_generated = {"normal": [
+        generate(prompt, refusal_block, None, args.refusal_max_new_tokens)
+        for prompt in refusal_prompts
+    ]}
+    for condition, edit_mode in (
+        ("zero_projection", "zero_projection"),
+        ("negative_centroid_clamp", "negative_centroid_clamp"),
+        ("centroid_matched_steering", "centroid_shift"),
+    ):
+        refusal_generated[condition] = [
+            generate(
+                prompt,
+                refusal_block,
+                lambda _m, _i, output, mode=edit_mode: edit_direction_output(
+                    output,
+                    refusal_raw_device,
+                    mode=mode,
+                    negative_coordinate=refusal_negative,
+                ),
+                args.refusal_max_new_tokens,
+            )
+            for prompt in refusal_prompts
+        ]
+    refusal_generated["normal_steering"] = refusal_generated[
+        "centroid_matched_steering"
+    ]
+    refusal_ids = [int(value) for value in refusal_meta["refusal_token_ids"]]
+    refusal_summary = []
+    for condition, token_lists in refusal_generated.items():
+        first_token_values = []
+        for prompt in refusal_prompts:
+            inputs = tokenizer(prompt, return_tensors="pt")
+            inputs = {key: value.to(args.device) for key, value in inputs.items()}
+            if condition == "normal":
+                hook_fn = None
+            else:
+                mode = (
+                    "centroid_shift"
+                    if condition in {"centroid_matched_steering", "normal_steering"}
+                    else condition
+                )
+                hook_fn = lambda _m, _i, output, value=mode: edit_direction_output(
+                    output,
+                    refusal_raw_device,
+                    mode=value,
+                    negative_coordinate=refusal_negative,
+                )
+            handle = refusal_block.register_forward_hook(hook_fn) if hook_fn else None
+            try:
+                with torch.inference_mode():
+                    logits = model(**inputs).logits[:, -1:].float()
+            finally:
+                if handle:
+                    handle.remove()
+            first_token_values.append(float(refusal_log_odds(logits, refusal_ids)))
+        refusal_summary.append(
             {
-                "path": str(responses_path.relative_to(ROOT)),
-                "rows": len(final),
-                "sha256": sha256_file(responses_path),
+                "condition": condition,
+                "n_prompts": len(token_lists),
+                "refusal_substring_rate": sum(
+                    is_refusal(tokenizer.decode(tokens, skip_special_tokens=True))
+                    for tokens in token_lists
+                ) / len(token_lists),
+                "first_token_refusal_metric": sum(first_token_values) / len(first_token_values),
+                "mean_generated_tokens": sum(map(len, token_lists)) / len(token_lists),
+                "cap_hits": sum(len(tokens) >= args.refusal_max_new_tokens for tokens in token_lists),
+                "generation_reused_from": (
+                    "centroid_matched_steering" if condition == "normal_steering" else None
+                ),
+                "generated_text_saved": False,
             }
-        ],
+        )
+    refusal_vector = {
+        "trait": "refusal",
+        "variant": "pregeneration",
+        "layer_one_indexed": refusal_layer,
+        "raw_norm": float(refusal_raw.norm()),
+        "positive_coordinate": float(
+            refusal_meta["selected_validation"]["clean_harmful_projection"]
+        ),
+        "negative_coordinate": refusal_negative,
+        "zero_fraction_from_negative": -refusal_negative / (
+            float(refusal_meta["selected_validation"]["clean_harmful_projection"])
+            - refusal_negative
+        ),
+        "normal_steering_coefficient": -1.0,
+    }
+    write_json(refusal_path, {"status": "complete", "vector": refusal_vector, "results": refusal_summary})
+
+    syc_rows = read_jsonl(syc_path)
+    if len(syc_rows) != 50:
+        raise RuntimeError(f"incomplete sycophancy rows: {len(syc_rows)}/50")
+    metadata = {
+        "status": "complete",
+        "claim_scope": "minimal Qwen-only three-vector geometry diagnostic",
+        "model": model_cfg,
+        "vectors": [*vector_report, refusal_vector],
+        "normal_steering": {
+            "refusal": "-1 raw DIM; same as centroid matched",
+            "sycophancy_prompt": "-1 raw DIM; same as centroid matched",
+            "sycophancy_response": "-2 raw DIM; prior conventional setting",
+        },
+        "outputs": {
+            "sycophancy": str(syc_path.relative_to(ROOT)),
+            "refusal": str(refusal_path.relative_to(ROOT)),
+        },
     }
     write_json(metadata_path, metadata)
     print(json.dumps(metadata, indent=2))

@@ -1,0 +1,46 @@
+{
+  "trait": "hallucination",
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "dtype": "bfloat16"
+  },
+  "vector": {
+    "type": "pre_answer",
+    "selection": "fixed",
+    "layer": 16,
+    "position": -1,
+    "train": {
+      "positive_path": "data/processed/qwen2.5-7b-instruct/hallucination/prompt_train_positive.jsonl",
+      "negative_path": "data/processed/qwen2.5-7b-instruct/hallucination/prompt_train_negative.jsonl",
+      "text_field": "instruction"
+    },
+    "batch_size": 4,
+    "max_length": 512,
+    "output_dir": "results/qwen2.5-7b-instruct/hallucination/prompt/vector"
+  },
+  "eapig": {
+    "corruption": "projection",
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/hallucination/prompt_train_positive.jsonl",
+      "text_field": "instruction",
+      "num_examples": 64
+    },
+    "batch_size": 1,
+    "max_length": 512,
+    "ig_steps": 5,
+    "k_values": [100, 500, 1000],
+    "output_dir": "results/qwen2.5-7b-instruct/hallucination/prompt/eapig"
+  },
+  "tests": {
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/hallucination/prompt_test_positive.jsonl",
+      "text_field": "instruction",
+      "num_examples": 32
+    },
+    "circuit_path": "results/qwen2.5-7b-instruct/hallucination/prompt/eapig/circuits/eapig_top_500.json",
+    "batch_size": 1,
+    "max_length": 512,
+    "output_path": "results/qwen2.5-7b-instruct/hallucination/prompt/tests.json"
+  }
+}

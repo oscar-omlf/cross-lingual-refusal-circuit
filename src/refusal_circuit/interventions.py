@@ -1,9 +1,10 @@
 """Residual-direction interventions used for direction validation and corruption.
 
 The hook construction follows the public methodology in Arditi et al.'s
-``refusal_direction`` repository (commit recorded in docs/RQ1_SETUP.md), but
-is implemented locally against TransformerLens hook points.  It never imports
-the external checkout at runtime.
+``refusal_direction`` repository, but is implemented locally against
+TransformerLens hook points. Provenance details are retained in saved result
+metadata and the repository archive. It never imports the external checkout at
+runtime.
 """
 
 from __future__ import annotations

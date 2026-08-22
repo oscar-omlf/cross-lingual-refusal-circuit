@@ -1,0 +1,46 @@
+{
+  "trait": "refusal",
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "dtype": "bfloat16"
+  },
+  "vector": {
+    "type": "response_average",
+    "layer": 15,
+    "positive_path": "data/processed/qwen2.5-7b-instruct/refusal/generation_train_positive.jsonl",
+    "negative_path": "data/processed/qwen2.5-7b-instruct/refusal/generation_train_negative.jsonl",
+    "pair_id_field": "pair_id",
+    "prompt_field": "prompt",
+    "response_field": "answer",
+    "trait_threshold": 50,
+    "coherence_threshold": 50,
+    "activation_dtype": "bfloat16",
+    "output_dir": "results/qwen2.5-7b-instruct/refusal/generation/vector"
+  },
+  "eapig": {
+    "corruption": "steering",
+    "coefficient": -1.0,
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/refusal/generation_train_positive.jsonl",
+      "num_examples": 64,
+      "formatted": true
+    },
+    "batch_size": 1,
+    "max_length": 1024,
+    "ig_steps": 5,
+    "k_values": [100, 500, 1000],
+    "output_dir": "results/qwen2.5-7b-instruct/refusal/generation/eapig"
+  },
+  "tests": {
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/refusal/generation_test_positive.jsonl",
+      "num_examples": 32,
+      "formatted": true
+    },
+    "circuit_path": "results/qwen2.5-7b-instruct/refusal/generation/eapig/circuits/eapig_top_500.json",
+    "batch_size": 1,
+    "max_length": 1024,
+    "output_path": "results/qwen2.5-7b-instruct/refusal/generation/tests.json"
+  }
+}

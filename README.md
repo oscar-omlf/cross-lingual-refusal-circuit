@@ -1,40 +1,39 @@
 # Cross-lingual refusal circuit
 
-This repository preserves Michael Hanna's EAP-IG implementation under
-[`EAP-IG/`](EAP-IG/) and adds refusal-circuit experiments for tracing
-refusal-direction representations in instruction-tuned LLMs.
+This repository contains the core implementation and saved artifacts for
+cross-lingual refusal-circuit and persona-direction experiments.
 
-The original EAP-IG demo is [`EAP-IG/greater_than.ipynb`](EAP-IG/greater_than.ipynb).
-The existing batch experiment entry point is [`test_ig_iterations.py`](test_ig_iterations.py),
-which expects the original task CSVs and a CUDA-ready TransformerLens setup.
+## Core layout
 
-For new experiment runs, use the unified entry point:
+- `src/refusal_circuit/`: reusable circuit, intervention, attribution, data,
+  metric, and persona-vector code.
+- `results/`: saved model directions/weights, circuit score tables, masks,
+  evaluations, plots, and frozen result manifests.
+- `data/`: processed experiment inputs and provenance snapshots needed to
+  interpret or reproduce saved results.
+- `configs/`: the four refusal/hallucination prompt/generation experiments.
+- `EAP-IG/`: vendored editable dependency required by the package.
+- `tests/`: tests that exercise the retained core implementation without
+  depending on archived orchestration scripts.
+
+Historical runbooks, superseded experiment orchestration, cluster wrappers,
+root-level benchmark scripts, and script-dependent tests were moved to
+`archive/`. See `archive/README.md` for an inventory and restoration notes.
+
+## Workflow
+
+Three thin scripts wrap the existing source algorithms. Choose one of the four
+trait/vector configs in `configs/`:
 
 ```bash
-/home/omiro1/.local/bin/uv sync --locked
-/home/omiro1/.local/bin/uv run --locked python scripts/rq.py list
+uv run --locked python scripts/extract_vector.py --config configs/refusal_prompt.json
+uv run --locked python scripts/run_eapig.py --config configs/refusal_prompt.json
+uv run --locked python scripts/run_tests.py --config configs/refusal_prompt.json
 ```
 
-UV manages Python 3.10.20 and the CUDA 12.1 PyTorch wheel in `.venv`; GPU jobs
-still load the cluster's CUDA 12.8 module through the generic SLURM wrapper.
+See `SYSTEM_DESIGN.md` for the small shared interface.
 
-The old one-off scripts are still available under
-[`scripts/legacy/`](scripts/legacy/) for exact reproducibility, but new work
-should go through [`scripts/rq.py`](scripts/rq.py) and the generic SLURM wrapper
-[`scripts/slurm/rq_job.sbatch`](scripts/slurm/rq_job.sbatch).
+## Environment
 
-For the project structure, environment, assumptions, commands, and output
-definitions, see [the RQ1 runbook](docs/RQ1_SETUP.md).
-
-For a concise presentation-oriented description of the completed RQ1 result,
-see [the RQ1 presentation brief](docs/RQ1_PRESENTATION.md).
-
-For the current RQ1/RQ2 result inventory and headline tables, see
-[the results summary](docs/RESULTS_SUMMARY.md).
-
-For a brief narrative of the multilingual RQ2 result, see
-[the RQ2 progress note](docs/RQ2_BRIEF_PROGRESS.md).
-
-The executable Qwen refusal consolidation configuration is
-`configs/phase2_qwen_refusal.json`. Phase 2 reuses saved Qwen score tables and
-does not rerun refusal-vector extraction or EAP-IG discovery.
+The project targets Python 3.10. Dependency versions are pinned by
+`pyproject.toml` and `uv.lock`.
