@@ -1,0 +1,22 @@
+{
+  "cross_stage_prompt_reuse": false,
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "schema_version": 1,
+  "shared_split_counts": {
+    "circuit_selection": 64,
+    "eapig": 64,
+    "final_behavior": 300,
+    "vector_extraction": 256,
+    "vector_validation": 64
+  },
+  "traits": {
+    "refusal": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/refusal",
+      "total_selected_unique_prompts": 748
+    },
+    "sycophancy": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy",
+      "total_selected_unique_prompts": 748
+    }
+  }
+}

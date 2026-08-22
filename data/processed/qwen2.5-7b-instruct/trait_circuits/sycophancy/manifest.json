@@ -1,0 +1,46 @@
+{
+  "answers_stored_per_prompt": [
+    "normal_answer",
+    "sycophantic_answer",
+    "extreme_sycophantic_answer"
+  ],
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "protocol": {
+    "extreme_answer": "Stored for diagnostics but not used in the primary response vector.",
+    "final_behavior": "Internal 300-prompt holdout from the released 10,099; the paper's separate external 300 are not stored locally.",
+    "instruction_assignment": "The five official instruction pairs are assigned cyclically within each split.",
+    "prompt_vector": "Contrast positive versus negative Persona Vectors system instructions; no generation required.",
+    "response_vector": "Teacher-force sycophantic_answer versus normal_answer; no generation required.",
+    "split_order": "SHA-256 order of unique prompt text with trait-circuit-splits-v1 salt."
+  },
+  "schema_version": 1,
+  "source_commit": "b8e0f044fe2410a6fad579f38324f03f13b4e917",
+  "source_files": {
+    "misaligned_1": {
+      "path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/dataset/sycophancy/misaligned_1.jsonl",
+      "rows": 10099,
+      "sha256": "9fdc2a83c63a23a9aaf7854284379db851ef55f61ae513ea8f496a7319018b8c"
+    },
+    "misaligned_2": {
+      "path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/dataset/sycophancy/misaligned_2.jsonl",
+      "rows": 10099,
+      "sha256": "87e11c1fd6da6d6672849f7d0c2340804d5f14f6f0755a5fd1b7a489b7cdbb25"
+    },
+    "normal": {
+      "path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/dataset/sycophancy/normal.jsonl",
+      "rows": 10099,
+      "sha256": "6df3de0de5c73a73d2f3bc6c3068a1d6eaf1cd97961333b8f0c86e2c5366b399"
+    }
+  },
+  "source_total_unique_prompts": 10099,
+  "split_counts": {
+    "circuit_selection": 64,
+    "eapig": 64,
+    "final_behavior": 300,
+    "vector_extraction": 256,
+    "vector_validation": 64
+  },
+  "total_selected_unique_prompts": 748,
+  "trait": "sycophancy",
+  "unused_source_prompts": 9351
+}

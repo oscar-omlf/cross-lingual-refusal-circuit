@@ -1,0 +1,24 @@
+{
+  "answer_variants_per_prompt": 3,
+  "dataset": "Persona Vectors sycophancy training data",
+  "files": {
+    "misaligned_1": {
+      "path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/dataset/sycophancy/misaligned_1.jsonl",
+      "rows": 10099,
+      "sha256": "9fdc2a83c63a23a9aaf7854284379db851ef55f61ae513ea8f496a7319018b8c"
+    },
+    "misaligned_2": {
+      "path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/dataset/sycophancy/misaligned_2.jsonl",
+      "rows": 10099,
+      "sha256": "87e11c1fd6da6d6672849f7d0c2340804d5f14f6f0755a5fd1b7a489b7cdbb25"
+    },
+    "normal": {
+      "path": "data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/dataset/sycophancy/normal.jsonl",
+      "rows": 10099,
+      "sha256": "6df3de0de5c73a73d2f3bc6c3068a1d6eaf1cd97961333b8f0c86e2c5366b399"
+    }
+  },
+  "schema_version": 1,
+  "source_commit": "b8e0f044fe2410a6fad579f38324f03f13b4e917",
+  "unique_prompts": 10099
+}

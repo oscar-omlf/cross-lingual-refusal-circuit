@@ -1,0 +1,95 @@
+{
+  "excluded_duplicate_rows": 3,
+  "language": "en",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "protocol": {
+    "circuit_selection": "Second deterministic half of the 128 unseen harmful development prompts.",
+    "deduplication": "Exact instruction text is forbidden from crossing experiment phases.",
+    "eapig": "First deterministic half of the 128 unseen harmful development prompts.",
+    "final_behavior": "172 unseen harmful + every remaining 128 harmless prompt.",
+    "vector_extraction": "Existing paper-faithful 128 harmful + 128 harmless prompt split.",
+    "vector_validation": "Existing 32 harmful + 32 harmless validation split."
+  },
+  "reserve_unique_prompts": 81,
+  "schema_version": 1,
+  "source_files": {
+    "harmful_confirmation": {
+      "path": "data/processed/qwen2.5-7b-instruct/polyrefuse_phase2_refusal/en/confirmation.jsonl",
+      "rows": 128,
+      "sha256": "258dd6099fc21f106de797e5c2906e208835061b37f832c1f16dcb67b6028554"
+    },
+    "harmful_development": {
+      "path": "data/processed/qwen2.5-7b-instruct/polyrefuse_phase2_refusal/en/development.jsonl",
+      "rows": 128,
+      "sha256": "cf7ccc749b4923d56919c274c192cdf7b99d8860e117ae720c30cf543f9259ca"
+    },
+    "harmful_reserve": {
+      "path": "data/processed/qwen2.5-7b-instruct/polyrefuse_phase2_refusal/en/reserve.jsonl",
+      "rows": 64,
+      "sha256": "11620b98a47794642a795911ee56db9fc904fb8228b7f6d2e987c62d07b823bb"
+    },
+    "harmless_development": {
+      "path": "data/processed/qwen2.5-7b-instruct/polyrefuse_phase2_harmless/en/development.jsonl",
+      "rows": 32,
+      "sha256": "915167f09f60d5f9d2b2ab9db98cd5af282021c881a9ca3ce16daa38937207cf"
+    },
+    "harmless_reserve": {
+      "path": "data/processed/qwen2.5-7b-instruct/polyrefuse_phase2_harmless/en/reserve.jsonl",
+      "rows": 32,
+      "sha256": "2116a86674c3b235922302adf986f3c5bc09cb257cadcc2e2b533927deb959c3"
+    },
+    "test": {
+      "path": "data/processed/qwen2.5-7b-instruct/polyrefuse/en/test.jsonl",
+      "rows": 128,
+      "sha256": "6d1389bf45f4c04729da148cf6b3829501310188d56bd3599704de74e11cbe62"
+    },
+    "train": {
+      "path": "data/processed/qwen2.5-7b-instruct/polyrefuse/en/train.jsonl",
+      "rows": 256,
+      "sha256": "898df86022e8f45673d4dc2230164de2e42174338eeba67462c0086563d0db0f"
+    },
+    "validation": {
+      "path": "data/processed/qwen2.5-7b-instruct/polyrefuse/en/val.jsonl",
+      "rows": 64,
+      "sha256": "e30b35fd5fb0b71d9ccb8dcfa581baac0f3242a4e853fdbcf0995aa2815dd059"
+    }
+  },
+  "source_rows": 832,
+  "split_counts": {
+    "circuit_selection": {
+      "labels": {
+        "harmful": 64
+      },
+      "total": 64
+    },
+    "eapig": {
+      "labels": {
+        "harmful": 64
+      },
+      "total": 64
+    },
+    "final_behavior": {
+      "labels": {
+        "harmful": 172,
+        "harmless": 128
+      },
+      "total": 300
+    },
+    "vector_extraction": {
+      "labels": {
+        "harmful": 128,
+        "harmless": 128
+      },
+      "total": 256
+    },
+    "vector_validation": {
+      "labels": {
+        "harmful": 32,
+        "harmless": 32
+      },
+      "total": 64
+    }
+  },
+  "total_selected_unique_prompts": 748,
+  "trait": "refusal"
+}
