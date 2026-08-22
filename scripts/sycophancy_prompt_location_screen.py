@@ -14,7 +14,14 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from refusal_circuit.persona import make_system_prompt, read_jsonl, sha256_file, write_jsonl
+from refusal_circuit.persona import (
+    ablate_direction_from_inputs,
+    ablate_direction_from_output,
+    make_system_prompt,
+    read_jsonl,
+    sha256_file,
+    write_jsonl,
+)
 from refusal_circuit.paths import write_json
 
 
@@ -94,6 +101,47 @@ def recurrent_input_hook(vector: torch.Tensor, coefficient: float, prompt_positi
     return hook
 
 
+def install_intervention_hooks(
+    model,
+    *,
+    mode: str,
+    vector: torch.Tensor,
+    layer: int,
+    position: int,
+    coefficient: float,
+) -> list:
+    """Install recurrent coefficient steering or paper-style global projection."""
+    device_vector = vector.to(
+        device=model.device,
+        dtype=next(model.parameters()).dtype,
+    )
+    if mode == "coefficient":
+        return [
+            model.model.layers[layer].register_forward_pre_hook(
+                recurrent_input_hook(device_vector, coefficient, position)
+            )
+        ]
+    if mode != "projection":
+        raise ValueError(f"Unknown intervention mode {mode!r}.")
+
+    def project_input(_module, inputs):
+        return ablate_direction_from_inputs(inputs, device_vector)
+
+    def project_output(_module, _inputs, output):
+        return ablate_direction_from_output(output, device_vector)
+
+    handles = []
+    for block in model.model.layers:
+        handles.extend(
+            [
+                block.register_forward_pre_hook(project_input),
+                block.self_attn.register_forward_hook(project_output),
+                block.mlp.register_forward_hook(project_output),
+            ]
+        )
+    return handles
+
+
 def generated_token_count(token_ids: list[int], eos_token_id: int | None) -> int:
     if eos_token_id is None or eos_token_id not in token_ids:
         return len(token_ids)
@@ -113,6 +161,7 @@ def generate_rows(
     position: int | None = None,
     vector: torch.Tensor | None = None,
     coefficient: float = 0.0,
+    intervention_mode: str = "none",
 ) -> list[dict]:
     output = []
     source_batches = batches(source_rows, batch_size)
@@ -126,12 +175,17 @@ def generate_rows(
         )
         inputs = {name: value.to(model.device) for name, value in inputs.items()}
         prompt_length = int(inputs["input_ids"].shape[1])
-        handle = None
+        handles = []
         if vector is not None:
             if layer is None or position is None:
-                raise ValueError("Steered generation requires layer and position.")
-            handle = model.model.layers[layer].register_forward_pre_hook(
-                recurrent_input_hook(vector, coefficient, position)
+                raise ValueError("Intervened generation requires layer and position.")
+            handles = install_intervention_hooks(
+                model,
+                mode=intervention_mode,
+                vector=vector,
+                layer=layer,
+                position=position,
+                coefficient=coefficient,
             )
         try:
             with torch.inference_mode():
@@ -145,7 +199,7 @@ def generate_rows(
                     eos_token_id=tokenizer.eos_token_id,
                 )
         finally:
-            if handle is not None:
+            for handle in handles:
                 handle.remove()
         generated = generated.detach().cpu()
         for source, token_row in zip(source_batch, generated, strict=True):
@@ -167,7 +221,10 @@ def generate_rows(
                     "condition": condition,
                     "layer": layer,
                     "position": position,
-                    "coefficient": coefficient,
+                    "intervention_mode": intervention_mode,
+                    "coefficient": (
+                        None if intervention_mode == "projection" else coefficient
+                    ),
                     "answer": tokenizer.decode(
                         continuation, skip_special_tokens=True
                     ).strip(),
@@ -203,6 +260,16 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--num-questions", type=int, default=16)
     parser.add_argument("--coefficient", type=float, default=2.0)
+    parser.add_argument(
+        "--induction-mode",
+        choices=("coefficient", "projection"),
+        default="coefficient",
+    )
+    parser.add_argument(
+        "--ablation-mode",
+        choices=("coefficient", "projection"),
+        default="coefficient",
+    )
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--overwrite", action="store_true")
@@ -329,6 +396,7 @@ def main() -> None:
                 position=position,
                 vector=vector,
                 coefficient=args.coefficient,
+                intervention_mode=args.induction_mode,
             )
             ablation = generate_rows(
                 model=model,
@@ -342,6 +410,7 @@ def main() -> None:
                 position=position,
                 vector=vector,
                 coefficient=-args.coefficient,
+                intervention_mode=args.ablation_mode,
             )
             write_jsonl(responses_path, [*induction, *ablation], mode="a")
 
@@ -375,21 +444,34 @@ def main() -> None:
             "baseline_negative": "anti-sycophantic system instruction, no steering",
             "baseline_positive": "sycophantic system instruction, no steering",
             "induction": (
-                f"anti-sycophantic system instruction, +{args.coefficient:g} "
-                "times the matched raw prompt vector"
+                "anti-sycophantic system instruction; "
+                + (
+                    f"+{args.coefficient:g} times the matched raw prompt vector"
+                    if args.induction_mode == "coefficient"
+                    else "global projection of the matched vector"
+                )
             ),
             "ablation": (
-                f"sycophantic system instruction, -{args.coefficient:g} "
-                "times the matched raw prompt vector"
+                "sycophantic system instruction; "
+                + (
+                    f"-{args.coefficient:g} times the matched raw prompt vector"
+                    if args.ablation_mode == "coefficient"
+                    else "global projection of the matched vector"
+                )
             ),
         },
         "intervention": {
             "coefficient_magnitude": args.coefficient,
-            "timing": (
-                "extraction suffix position on prompt prefill, then every "
-                "cached decode step"
+            "induction_mode": args.induction_mode,
+            "ablation_mode": args.ablation_mode,
+            "coefficient_timing": (
+                "extraction suffix position on prompt prefill, then every cached "
+                "decode step at the matched layer"
             ),
-            "site": "HF transformer block input / TransformerLens hook_resid_pre",
+            "projection_sites": (
+                "every layer and token position: transformer block input, complete "
+                "attention output, and MLP output"
+            ),
         },
         "generation": {
             "deterministic": True,

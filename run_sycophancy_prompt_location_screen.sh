@@ -22,4 +22,4 @@ export PYTHONUNBUFFERED=1
 mkdir -p logs
 nvidia-smi
 "$HOME/.local/bin/uv" run --locked python \
-  scripts/sycophancy_prompt_location_screen.py
+  scripts/sycophancy_prompt_location_screen.py "$@"
