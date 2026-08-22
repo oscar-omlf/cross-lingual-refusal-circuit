@@ -241,6 +241,32 @@ def format_instructions(tokenizer, instructions: Iterable[str]) -> list[str]:
     return [format_instruction(tokenizer, instruction) for instruction in instructions]
 
 
+def format_system_instruction(
+    tokenizer,
+    system_instruction: str,
+    instruction: str,
+) -> str:
+    """Format a system instruction and user message for generation.
+
+    Persona prompt vectors contrast matched system instructions while holding
+    the user message fixed.  Keeping the system instruction in its native chat
+    role avoids conflating that contrast with user-message formatting.
+    """
+    if getattr(tokenizer, "chat_template", None):
+        return tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": instruction},
+            ],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+    return (
+        f"<start_of_turn>user\nSystem instruction: {system_instruction}\n\n"
+        f"{instruction}<end_of_turn>\n<start_of_turn>model\n"
+    )
+
+
 def post_instruction_positions(tokenizer) -> tuple[int, ...]:
     """Return negative offsets for the native post-instruction template suffix.
 

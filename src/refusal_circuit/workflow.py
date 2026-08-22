@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 import torch
@@ -88,6 +89,54 @@ def _contrast_prompts(model, spec: dict) -> tuple[list[str], list[str]]:
     )
 
 
+def _paired_system_prompts(model, spec: dict) -> tuple[list[dict], list[str], list[str]]:
+    """Format aligned positive/negative system conditions for shared prompts."""
+    from .model import format_system_instruction
+    from .persona import make_system_prompt
+
+    rows = _select_rows(_rows(spec["path"]), spec)
+    prompt_field = spec.get("prompt_field", "prompt")
+    positive_field = spec.get(
+        "positive_system_field", "positive_system_instruction"
+    )
+    negative_field = spec.get(
+        "negative_system_field", "negative_system_instruction"
+    )
+    assistant_name = spec.get("assistant_name")
+    required = (prompt_field, positive_field, negative_field)
+    for index, row in enumerate(rows):
+        missing = [field for field in required if not row.get(field)]
+        if missing:
+            raise ValueError(
+                f"Paired prompt row {index} is missing non-empty fields: {missing}"
+            )
+    positive = [
+        format_system_instruction(
+            model.tokenizer,
+            (
+                make_system_prompt(assistant_name, row[positive_field])
+                if assistant_name
+                else row[positive_field]
+            ),
+            row[prompt_field],
+        )
+        for row in rows
+    ]
+    negative = [
+        format_system_instruction(
+            model.tokenizer,
+            (
+                make_system_prompt(assistant_name, row[negative_field])
+                if assistant_name
+                else row[negative_field]
+            ),
+            row[prompt_field],
+        )
+        for row in rows
+    ]
+    return rows, positive, negative
+
+
 def _transcripts(model, spec: dict, max_length: int | None = None) -> list[tuple[str, int]]:
     rows = _select_rows(_rows(spec["path"]), spec)
     prompt_field = spec.get("prompt_field", "prompt")
@@ -116,8 +165,108 @@ def _vector_paths(config: dict) -> tuple[Path, Path, Path]:
 
 
 def extract_vector(config: dict, *, overwrite: bool = False) -> dict:
-    """Extract either a pre-answer DIM vector or a response-average vector."""
+    """Extract a configured prompt- or response-based trait vector."""
     vector = config["vector"]
+    if vector["type"] == "paired_prompt":
+        from .direction import mean_residuals
+
+        output_dir = _path(vector["output_dir"])
+        paths = {
+            "directions": output_dir / "directions.pt",
+            "raw_directions": output_dir / "raw_directions.pt",
+            "positive_means": output_dir / "positive_means.pt",
+            "negative_means": output_dir / "negative_means.pt",
+            "metadata": output_dir / "metadata.json",
+        }
+        existing = [path for path in paths.values() if path.exists()]
+        if existing and not overwrite:
+            raise FileExistsError(
+                f"{existing[0]} already exists; pass --overwrite."
+            )
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        model = _model(config)
+        rows, positive_prompts, negative_prompts = _paired_system_prompts(
+            model, vector["train"]
+        )
+        layers = [
+            int(layer)
+            for layer in (
+                vector.get("layers")
+                or list(range(int(model.cfg.n_layers)))
+            )
+        ]
+        if not layers or len(layers) != len(set(layers)):
+            raise ValueError("paired_prompt layers must be non-empty and unique.")
+        if any(layer < 0 or layer >= int(model.cfg.n_layers) for layer in layers):
+            raise ValueError("paired_prompt layer is outside the model.")
+        position = int(vector.get("position", -1))
+        common = {
+            "layers": layers,
+            "positions": [position],
+            "batch_size": int(vector.get("batch_size", 4)),
+            "max_length": vector.get("max_length", 512),
+        }
+        positive = mean_residuals(model, positive_prompts, **common)
+        negative = mean_residuals(model, negative_prompts, **common)
+        positive_means = torch.stack(
+            [positive[(layer, position)] for layer in layers]
+        ).float()
+        negative_means = torch.stack(
+            [negative[(layer, position)] for layer in layers]
+        ).float()
+        raw_directions = positive_means - negative_means
+        norms = raw_directions.norm(dim=-1, keepdim=True)
+        if not torch.isfinite(raw_directions).all() or (norms <= 0).any():
+            raise RuntimeError(
+                "Extracted paired prompt directions are non-finite or zero."
+            )
+        directions = raw_directions / norms
+
+        torch.save(directions, paths["directions"])
+        torch.save(raw_directions, paths["raw_directions"])
+        torch.save(positive_means, paths["positive_means"])
+        torch.save(negative_means, paths["negative_means"])
+        pair_field = vector["train"].get("instruction_pair_field")
+        pair_counts = (
+            dict(sorted(Counter(str(row[pair_field]) for row in rows).items()))
+            if pair_field
+            else None
+        )
+        metadata = {
+            "model": config["model"],
+            "trait": config["trait"],
+            "vector_type": "paired_prompt",
+            "method": (
+                "mean(final-prompt-token residual | positive system instruction) "
+                "- mean(final-prompt-token residual | negative system instruction)"
+            ),
+            "source_path": str(_path(vector["train"]["path"])),
+            "base_prompts": len(rows),
+            "formatted_prompts_per_polarity": len(rows),
+            "layers": layers,
+            "position": position,
+            "target_hooks": [
+                f"blocks.{layer}.hook_resid_pre" for layer in layers
+            ],
+            "prompt_field": vector["train"].get("prompt_field", "prompt"),
+            "positive_system_field": vector["train"].get(
+                "positive_system_field", "positive_system_instruction"
+            ),
+            "negative_system_field": vector["train"].get(
+                "negative_system_field", "negative_system_instruction"
+            ),
+            "assistant_name": vector["train"].get("assistant_name"),
+            "instruction_pair_counts": pair_counts,
+            "artifacts": {
+                key: path.name
+                for key, path in paths.items()
+                if key != "metadata"
+            },
+        }
+        write_json(paths["metadata"], metadata)
+        return metadata
+
     direction_path, raw_path, metadata_path = _vector_paths(config)
     if metadata_path.exists() and not overwrite:
         raise FileExistsError(f"{metadata_path} already exists; pass --overwrite.")
@@ -273,7 +422,9 @@ def extract_vector(config: dict, *, overwrite: bool = False) -> dict:
             "pairs": len(pairs),
         }
     else:
-        raise ValueError("vector.type must be pre_answer or response_average.")
+        raise ValueError(
+            "vector.type must be paired_prompt, pre_answer, or response_average."
+        )
 
     norm = raw.norm()
     if not torch.isfinite(raw).all() or norm <= 0:
