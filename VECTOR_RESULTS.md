@@ -63,8 +63,11 @@ Exact cosine maxima:
 | −1 vs generation vector | `0.4897` at layer 21 |
 | −2 vs generation vector | `0.3776` at layer 24 |
 
-Current causal screen, job `25968596`: 16 held-out questions; layers 1–27;
+Completed causal screen, job `25968596`: 16 held-out questions; layers 1–27;
 positions −1/−2; positive-system and negative-system baselines; recurrent
 `+2× raw` induction and `−2× raw` ablation; deterministic, batch 4, 256 tokens;
-1,760 answers. Generation is running; Persona trait/coherence judging is
+1,760/1,760 answers, no empty outputs. Persona trait/coherence judging remains
 pending because the HPC has no OpenAI credential.
+
+The full prompt-versus-generation geometry analysis, tables, and figure are in
+[`analysis/sycophancy_vector_geometry/REPORT.md`](analysis/sycophancy_vector_geometry/REPORT.md).

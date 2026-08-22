@@ -1,0 +1,320 @@
+{
+  "cross_layer_comparisons": {
+    "legacy_prompt__generation": {
+      "global_best_cosine": 0.5281124711036682,
+      "left_layer": 21,
+      "mean_best_cosine": 0.24754650558211974,
+      "median_absolute_layer_shift": 0.0,
+      "right_layer": 21
+    },
+    "prompt_minus1__generation": {
+      "global_best_cosine": 0.4896906614303589,
+      "left_layer": 21,
+      "mean_best_cosine": 0.21303795567817158,
+      "median_absolute_layer_shift": 1.0,
+      "right_layer": 21
+    },
+    "prompt_minus1__prompt_minus2": {
+      "global_best_cosine": 0.7970060110092163,
+      "left_layer": 15,
+      "mean_best_cosine": 0.5946307966002712,
+      "median_absolute_layer_shift": 0.0,
+      "right_layer": 15
+    },
+    "prompt_minus2__generation": {
+      "global_best_cosine": 0.3776112198829651,
+      "left_layer": 24,
+      "mean_best_cosine": 0.16029219688088805,
+      "median_absolute_layer_shift": 2.0,
+      "right_layer": 24
+    }
+  },
+  "definitions": {
+    "generation": "Paper-style mean response-token vector from 810 effective pairs.",
+    "legacy_prompt": "Legacy prompt-last vector stored with Persona results.",
+    "prompt_minus1": "New 256-question paired-system prompt vector at final newline.",
+    "prompt_minus2": "New 256-question paired-system prompt vector at assistant token."
+  },
+  "generation_selected_layer_20": {
+    "coefficient_2_shift_norm": 47.55418395996094,
+    "raw_norm": 23.77709197998047
+  },
+  "model": {
+    "hidden_size": 3584,
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+  },
+  "prompt_centroid_examples": [
+    {
+      "centered_negative_coordinate": -8.46647834777832,
+      "centered_positive_coordinate": 8.46647834777832,
+      "coefficient_2_from_negative_centered": 25.39943504333496,
+      "coefficient_2_overshoot_distance": 16.93295669555664,
+      "coefficient_2_shift_norm": 33.86591339111328,
+      "gap_norm": 16.93295669555664,
+      "layer": 15,
+      "variant": "prompt_minus1"
+    },
+    {
+      "centered_negative_coordinate": -10.461453437805176,
+      "centered_positive_coordinate": 10.461453437805176,
+      "coefficient_2_from_negative_centered": 31.384360313415527,
+      "coefficient_2_overshoot_distance": 20.92290687561035,
+      "coefficient_2_shift_norm": 41.8458137512207,
+      "gap_norm": 20.92290687561035,
+      "layer": 18,
+      "variant": "prompt_minus1"
+    },
+    {
+      "centered_negative_coordinate": -14.87842845916748,
+      "centered_positive_coordinate": 14.87842845916748,
+      "coefficient_2_from_negative_centered": 44.63528537750244,
+      "coefficient_2_overshoot_distance": 29.75685691833496,
+      "coefficient_2_shift_norm": 59.51371383666992,
+      "gap_norm": 29.75685691833496,
+      "layer": 20,
+      "variant": "prompt_minus1"
+    },
+    {
+      "centered_negative_coordinate": -7.941911220550537,
+      "centered_positive_coordinate": 7.941911220550537,
+      "coefficient_2_from_negative_centered": 23.82573366165161,
+      "coefficient_2_overshoot_distance": 15.883822441101074,
+      "coefficient_2_shift_norm": 31.76764488220215,
+      "gap_norm": 15.883822441101074,
+      "layer": 15,
+      "variant": "prompt_minus2"
+    },
+    {
+      "centered_negative_coordinate": -11.286972999572754,
+      "centered_positive_coordinate": 11.286972999572754,
+      "coefficient_2_from_negative_centered": 33.86091899871826,
+      "coefficient_2_overshoot_distance": 22.573945999145508,
+      "coefficient_2_shift_norm": 45.147891998291016,
+      "gap_norm": 22.573945999145508,
+      "layer": 18,
+      "variant": "prompt_minus2"
+    },
+    {
+      "centered_negative_coordinate": -16.812728881835938,
+      "centered_positive_coordinate": 16.812728881835938,
+      "coefficient_2_from_negative_centered": 50.43818664550781,
+      "coefficient_2_overshoot_distance": 33.625457763671875,
+      "coefficient_2_shift_norm": 67.25091552734375,
+      "gap_norm": 33.625457763671875,
+      "layer": 20,
+      "variant": "prompt_minus2"
+    }
+  ],
+  "provenance": {
+    "generation_negative": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/old_results/qwen2.5-7b-instruct/persona/sycophantic/vector/sycophantic_response_avg_neg_mean.pt",
+      "sha256": "a074c7475ff6e4249fda1a8ad04b417f22b99f07c45f37bdc34e9f612477f440"
+    },
+    "generation_positive": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/old_results/qwen2.5-7b-instruct/persona/sycophantic/vector/sycophantic_response_avg_pos_mean.pt",
+      "sha256": "8ea2755e76f7d330fcb6038e10a7c09d447d5268186a5c01c2013a42fcc88edb"
+    },
+    "generation_raw": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/old_results/qwen2.5-7b-instruct/persona/sycophantic/vector/sycophantic_response_avg_diff.pt",
+      "sha256": "47d080911064d1ff2a03e5331923ed170261073db748f4cb3e2773a2a265edc6"
+    },
+    "legacy_prompt_negative": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/old_results/qwen2.5-7b-instruct/persona/sycophantic/vector/sycophantic_prompt_last_neg_mean.pt",
+      "sha256": "7836bacc9c60cc1e650a9c375d69811f45729e8fbb6ab455b3bb1b1876cf1316"
+    },
+    "legacy_prompt_positive": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/old_results/qwen2.5-7b-instruct/persona/sycophantic/vector/sycophantic_prompt_last_pos_mean.pt",
+      "sha256": "ddb56207e71f121e7adc5e1ee5cd02c07079db9f8f66863585789c73bb7bf87a"
+    },
+    "legacy_prompt_raw": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/old_results/qwen2.5-7b-instruct/persona/sycophantic/vector/sycophantic_prompt_last_diff.pt",
+      "sha256": "a9202b7f4f600ccaeb88cfc1d5ec6f6de5bba2b214103b15b1de69a406e37b2d"
+    },
+    "prompt_minus1_negative": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/vector_candidates/negative_means.pt",
+      "sha256": "b78c57de46e00b749e1c868e4c4eebf5981775f9426ff3f7b6c744d235d0e467"
+    },
+    "prompt_minus1_positive": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/vector_candidates/positive_means.pt",
+      "sha256": "be9c72875e8fc4b88033116f1de6fec33622b3a94f08c2643fe350f6f0843300"
+    },
+    "prompt_minus1_raw": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/vector_candidates/raw_directions.pt",
+      "sha256": "bafdee1ed2e4ad3769498156184da9637778ce7c521abf605523f0415f6c80ec"
+    },
+    "prompt_minus2_negative": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/vector_candidates_position_minus2/negative_means.pt",
+      "sha256": "b297957bff4dd03c2fdcba27358a0b705f765f05175036f03d405792826912e2"
+    },
+    "prompt_minus2_positive": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/vector_candidates_position_minus2/positive_means.pt",
+      "sha256": "ad590aa91a0de9cf78284bf1a2b35b79e0c00697df8fa3794a1da896e62b01a5"
+    },
+    "prompt_minus2_raw": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/vector_candidates_position_minus2/raw_directions.pt",
+      "sha256": "299400081e426b67bc2ef0b672865a40ca197208d717f278bff9b67806324fa9"
+    },
+    "screen_responses": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/location_screen_coefficient_2/responses.jsonl",
+      "sha256": "b8eaa613f891e8f09d1dd8a1bcf0b0c095e2b44a3f13575aa5b26db882a77c2e"
+    }
+  },
+  "same_layer_comparisons": {
+    "legacy_prompt__generation": {
+      "mean_cosine_layers_15_20": 0.33951474726200104,
+      "peak_same_layer": 21,
+      "peak_same_layer_cosine": 0.5281124711036682
+    },
+    "prompt_minus1__generation": {
+      "mean_cosine_layers_15_20": 0.28732214619716007,
+      "peak_same_layer": 21,
+      "peak_same_layer_cosine": 0.4896906614303589
+    },
+    "prompt_minus1__legacy_prompt": {
+      "mean_cosine_layers_15_20": 0.8507048984368643,
+      "peak_same_layer": 18,
+      "peak_same_layer_cosine": 0.8554142713546753
+    },
+    "prompt_minus1__prompt_minus2": {
+      "mean_cosine_layers_15_20": 0.7614128390947977,
+      "peak_same_layer": 15,
+      "peak_same_layer_cosine": 0.7970060110092163
+    },
+    "prompt_minus2__generation": {
+      "mean_cosine_layers_15_20": 0.15541544059912363,
+      "peak_same_layer": 24,
+      "peak_same_layer_cosine": 0.3776112198829651
+    },
+    "prompt_minus2__legacy_prompt": {
+      "mean_cosine_layers_15_20": 0.6345246533552805,
+      "peak_same_layer": 15,
+      "peak_same_layer_cosine": 0.6543445587158203
+    }
+  },
+  "schema_version": 1,
+  "screen": {
+    "coefficient": 2.0,
+    "correlations": [
+      {
+        "behavior_metric": "mean_generated_tokens",
+        "condition": "ablation",
+        "pearson_with_log_raw_norm": 0.6200927408739975,
+        "position": -2,
+        "spearman_with_raw_norm": 0.6398046398046398
+      },
+      {
+        "behavior_metric": "max_token_rate",
+        "condition": "ablation",
+        "pearson_with_log_raw_norm": 0.4829166518491995,
+        "position": -2,
+        "spearman_with_raw_norm": 0.4983294288560638
+      },
+      {
+        "behavior_metric": "mean_repeated_4gram_fraction",
+        "condition": "ablation",
+        "pearson_with_log_raw_norm": 0.5083811370493558,
+        "position": -2,
+        "spearman_with_raw_norm": 0.5412340655545528
+      },
+      {
+        "behavior_metric": "mean_generated_tokens",
+        "condition": "induction",
+        "pearson_with_log_raw_norm": 0.4523801877028517,
+        "position": -2,
+        "spearman_with_raw_norm": 0.511677612433735
+      },
+      {
+        "behavior_metric": "max_token_rate",
+        "condition": "induction",
+        "pearson_with_log_raw_norm": 0.6137212264183773,
+        "position": -2,
+        "spearman_with_raw_norm": 0.6236670799425935
+      },
+      {
+        "behavior_metric": "mean_repeated_4gram_fraction",
+        "condition": "induction",
+        "pearson_with_log_raw_norm": 0.5172144562193323,
+        "position": -2,
+        "spearman_with_raw_norm": 0.6672771672771672
+      },
+      {
+        "behavior_metric": "mean_generated_tokens",
+        "condition": "ablation",
+        "pearson_with_log_raw_norm": 0.49216201755104844,
+        "position": -1,
+        "spearman_with_raw_norm": 0.6275946275946276
+      },
+      {
+        "behavior_metric": "max_token_rate",
+        "condition": "ablation",
+        "pearson_with_log_raw_norm": 0.3487086171919315,
+        "position": -1,
+        "spearman_with_raw_norm": 0.41542968067876646
+      },
+      {
+        "behavior_metric": "mean_repeated_4gram_fraction",
+        "condition": "ablation",
+        "pearson_with_log_raw_norm": 0.4869944786338118,
+        "position": -1,
+        "spearman_with_raw_norm": 0.6823385822132443
+      },
+      {
+        "behavior_metric": "mean_generated_tokens",
+        "condition": "induction",
+        "pearson_with_log_raw_norm": 0.6039604083031487,
+        "position": -1,
+        "spearman_with_raw_norm": 0.5088304162578461
+      },
+      {
+        "behavior_metric": "max_token_rate",
+        "condition": "induction",
+        "pearson_with_log_raw_norm": 0.6548698566347915,
+        "position": -1,
+        "spearman_with_raw_norm": 0.5779708209810708
+      },
+      {
+        "behavior_metric": "mean_repeated_4gram_fraction",
+        "condition": "induction",
+        "pearson_with_log_raw_norm": 0.6651513989142072,
+        "position": -1,
+        "spearman_with_raw_norm": 0.6605616605616605
+      }
+    ],
+    "minus1_induction_full_cap_layers": [
+      21,
+      23,
+      24,
+      25,
+      26,
+      27
+    ],
+    "minus2_induction_full_cap_layers": [],
+    "responses": 1760,
+    "worst_max_token_rate": {
+      "coefficient_2_shift_norm": 82.71588897705078,
+      "condition": "induction",
+      "layer": 21,
+      "max_token_rate": 1.0,
+      "maximum_repeated_4gram_fraction": 0.7924528301886793,
+      "mean_generated_tokens": 256.0,
+      "mean_repeated_4gram_fraction": 0.43960968484153234,
+      "position": -1,
+      "raw_direction_norm": 41.35794448852539,
+      "responses": 16
+    },
+    "worst_mean_repetition": {
+      "coefficient_2_shift_norm": 181.4243621826172,
+      "condition": "induction",
+      "layer": 25,
+      "max_token_rate": 1.0,
+      "maximum_repeated_4gram_fraction": 0.9598393574297188,
+      "mean_generated_tokens": 256.0,
+      "mean_repeated_4gram_fraction": 0.7348022318990883,
+      "position": -1,
+      "raw_direction_norm": 90.7121810913086,
+      "responses": 16
+    }
+  },
+  "status": "complete"
+}

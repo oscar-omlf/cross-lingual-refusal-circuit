@@ -1,0 +1,13 @@
+position,condition,behavior_metric,pearson_with_log_raw_norm,spearman_with_raw_norm
+-2,ablation,mean_generated_tokens,0.6200927408739975,0.6398046398046398
+-2,ablation,max_token_rate,0.4829166518491995,0.4983294288560638
+-2,ablation,mean_repeated_4gram_fraction,0.5083811370493558,0.5412340655545528
+-2,induction,mean_generated_tokens,0.4523801877028517,0.511677612433735
+-2,induction,max_token_rate,0.6137212264183773,0.6236670799425935
+-2,induction,mean_repeated_4gram_fraction,0.5172144562193323,0.6672771672771672
+-1,ablation,mean_generated_tokens,0.49216201755104844,0.6275946275946276
+-1,ablation,max_token_rate,0.3487086171919315,0.41542968067876646
+-1,ablation,mean_repeated_4gram_fraction,0.4869944786338118,0.6823385822132443
+-1,induction,mean_generated_tokens,0.6039604083031487,0.5088304162578461
+-1,induction,max_token_rate,0.6548698566347915,0.5779708209810708
+-1,induction,mean_repeated_4gram_fraction,0.6651513989142072,0.6605616605616605
