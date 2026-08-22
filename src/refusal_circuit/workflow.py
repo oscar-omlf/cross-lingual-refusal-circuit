@@ -34,7 +34,7 @@ def _rows(path: str | Path) -> list[dict]:
     return rows
 
 
-def _model(config: dict):
+def _model(config: dict, *, hook_mode: str | None = None):
     from .model import load_model
 
     model = config["model"]
@@ -43,6 +43,7 @@ def _model(config: dict):
         revision=model.get("revision"),
         device=model.get("device"),
         dtype=model.get("dtype", "bfloat16"),
+        hook_mode=hook_mode or model.get("hook_mode", "eap"),
     )
 
 
@@ -499,7 +500,7 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
     metadata_path = output / "metadata.json"
     if metadata_path.exists() and not overwrite:
         raise FileExistsError(f"{metadata_path} already exists; pass --overwrite.")
-    model = _model(config)
+    model = _model(config, hook_mode="eap")
     direction, raw, vector = _load_vector(config, model)
     layer = int(vector["layer"])
     attribution = AttributionConfig(
@@ -594,7 +595,7 @@ def run_tests(config: dict) -> dict:
     )
 
     test = config["tests"]
-    model = _model(config)
+    model = _model(config, hook_mode="eap")
     direction, raw, vector = _load_vector(config, model)
     layer = int(vector["layer"])
     if config["eapig"]["corruption"] == "projection":

@@ -13,6 +13,7 @@ import torch
 
 
 DEFAULT_MODEL_NAME = "google/gemma-2-2b-it"
+MODEL_HOOK_MODES = ("standard", "eap")
 
 
 def _model_device(model) -> torch.device:
@@ -59,6 +60,43 @@ def configure_eap_hooks(model) -> None:
                 "set_ungroup_grouped_query_attention in TransformerLens."
             )
         setter(True)
+
+
+def configure_standard_hooks(model) -> None:
+    """Keep only ordinary model hooks enabled for non-EAP workloads.
+
+    Vector extraction and behavioral generation use residual/module-level hook
+    points that TransformerLens exposes by default.  They do not need the
+    memory-heavy per-head EAP tensors or grouped-query head expansion.
+    """
+    settings = {
+        "use_split_qkv_input": False,
+        "use_attn_result": False,
+        "use_hook_mlp_in": False,
+    }
+    for attribute, value in settings.items():
+        setter = getattr(model, f"set_{attribute}", None)
+        if callable(setter):
+            setter(value)
+        elif hasattr(model.cfg, attribute):
+            setattr(model.cfg, attribute, value)
+        else:
+            raise RuntimeError(
+                f"TransformerLens did not expose {attribute}; install a supported "
+                "TransformerLens version pinned in uv.lock."
+            )
+
+    if getattr(model.cfg, "n_key_value_heads", None) not in (
+        None,
+        model.cfg.n_heads,
+    ):
+        setter = getattr(model, "set_ungroup_grouped_query_attention", None)
+        if not callable(setter):
+            raise RuntimeError(
+                "Grouped-query attention needs "
+                "set_ungroup_grouped_query_attention in TransformerLens."
+            )
+        setter(False)
 
 
 def memory_efficient_complex_attn_linear(
@@ -148,6 +186,7 @@ def load_model(
     device: str | None = None,
     dtype: str = "bfloat16",
     revision: str | None = None,
+    hook_mode: str = "eap",
 ):
     """Load an instruction-tuned model through TransformerLens.
 
@@ -155,6 +194,11 @@ def load_model(
     silently fall back to GPT-2 or a base model because those do not answer the
     refusal-circuit question.
     """
+    if hook_mode not in MODEL_HOOK_MODES:
+        raise ValueError(
+            f"hook_mode must be one of {MODEL_HOOK_MODES}, got {hook_mode!r}."
+        )
+
     try:
         from transformer_lens import HookedTransformer
     except ImportError as exc:  # Makes a missing environment actionable.
@@ -183,7 +227,10 @@ def load_model(
     )
     model.eval()
     model.requires_grad_(False)
-    configure_eap_hooks(model)
+    if hook_mode == "eap":
+        configure_eap_hooks(model)
+    else:
+        configure_standard_hooks(model)
 
     if model.tokenizer.pad_token_id is None:
         model.tokenizer.pad_token = model.tokenizer.eos_token
