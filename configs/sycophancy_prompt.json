@@ -8,6 +8,8 @@
   },
   "vector": {
     "type": "paired_prompt",
+    "selection": "fixed",
+    "layer": 15,
     "train": {
       "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy/vector_extraction.jsonl",
       "num_examples": 256,
@@ -21,5 +23,35 @@
     "batch_size": 4,
     "max_length": 512,
     "output_dir": "results/qwen2.5-7b-instruct/sycophancy/prompt/vector_candidates"
+  },
+  "eapig": {
+    "corruption": "projection",
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy/eapig.jsonl",
+      "num_examples": 64,
+      "prompt_field": "prompt",
+      "positive_system_field": "positive_system_instruction",
+      "negative_system_field": "negative_system_instruction",
+      "assistant_name": "sycophantic"
+    },
+    "batch_size": 1,
+    "max_length": 512,
+    "ig_steps": 5,
+    "k_values": [100, 500, 1000],
+    "output_dir": "results/qwen2.5-7b-instruct/sycophancy/prompt/eapig"
+  },
+  "tests": {
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy/circuit_selection.jsonl",
+      "num_examples": 64,
+      "prompt_field": "prompt",
+      "positive_system_field": "positive_system_instruction",
+      "negative_system_field": "negative_system_instruction",
+      "assistant_name": "sycophantic"
+    },
+    "circuit_path": "results/qwen2.5-7b-instruct/sycophancy/prompt/eapig/circuits/eapig_top_500.json",
+    "batch_size": 1,
+    "max_length": 512,
+    "output_path": "results/qwen2.5-7b-instruct/sycophancy/prompt/eapig/circuit_selection_top_500.json"
   }
 }

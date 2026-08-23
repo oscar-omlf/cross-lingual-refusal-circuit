@@ -10,7 +10,7 @@ from unittest.mock import patch
 import torch
 
 from refusal_circuit.model import format_system_instruction
-from refusal_circuit.workflow import _paired_system_prompts, extract_vector
+from refusal_circuit.workflow import _load_vector, _paired_system_prompts, extract_vector
 
 
 class FakeTokenizer:
@@ -162,6 +162,47 @@ class PairedPromptVectorTests(unittest.TestCase):
                 metadata["instruction_pair_counts"],
                 {"0": 1, "1": 1},
             )
+
+    def test_loads_selected_paired_prompt_layer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory)
+            torch.save(
+                torch.tensor([[0.0, 0.0], [0.6, 0.8]]),
+                output_dir / "directions.pt",
+            )
+            torch.save(
+                torch.tensor([[0.0, 0.0], [3.0, 4.0]]),
+                output_dir / "raw_directions.pt",
+            )
+            (output_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "model": {"name": "fake/model", "revision": "test"},
+                        "vector_type": "paired_prompt",
+                        "layers": [0, 15],
+                        "position": -1,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = {
+                "model": {"name": "fake/model", "revision": "test"},
+                "vector": {
+                    "type": "paired_prompt",
+                    "layer": 15,
+                    "position": -1,
+                    "output_dir": str(output_dir),
+                },
+            }
+            model = torch.nn.Linear(1, 1)
+
+            direction, raw, metadata = _load_vector(config, model)
+
+        self.assertTrue(torch.equal(direction, torch.tensor([0.6, 0.8])))
+        self.assertTrue(torch.equal(raw, torch.tensor([3.0, 4.0])))
+        self.assertEqual(metadata["layer"], 15)
+        self.assertEqual(metadata["position"], -1)
+        self.assertEqual(metadata["target_hook"], "blocks.15.hook_resid_pre")
 
 
 if __name__ == "__main__":

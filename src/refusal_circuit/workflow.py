@@ -450,7 +450,14 @@ def extract_vector(config: dict, *, overwrite: bool = False) -> dict:
 
 
 def _load_vector(config: dict, model):
-    direction_path, raw_path, metadata_path = _vector_paths(config)
+    vector_config = config["vector"]
+    if vector_config["type"] == "paired_prompt":
+        root = _path(vector_config["output_dir"])
+        direction_path = root / "directions.pt"
+        raw_path = root / "raw_directions.pt"
+        metadata_path = root / "metadata.json"
+    else:
+        direction_path, raw_path, metadata_path = _vector_paths(config)
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     if metadata["model"]["name"] != config["model"]["name"]:
         raise ValueError("Vector and run config use different models.")
@@ -459,6 +466,31 @@ def _load_vector(config: dict, model):
     device = next(model.parameters()).device
     direction = torch.load(direction_path, map_location=device, weights_only=True)
     raw = torch.load(raw_path, map_location=device, weights_only=True)
+    if vector_config["type"] == "paired_prompt":
+        if "layer" not in vector_config:
+            raise ValueError("paired_prompt EAP-IG requires vector.layer.")
+        layer = int(vector_config["layer"])
+        layers = [int(value) for value in metadata["layers"]]
+        if layer not in layers:
+            raise ValueError(
+                f"Selected paired_prompt layer {layer} is not in saved layers."
+            )
+        if direction.shape[0] != len(layers) or raw.shape[0] != len(layers):
+            raise ValueError("Saved paired_prompt tensors do not match metadata layers.")
+        position = int(vector_config.get("position", metadata["position"]))
+        if position != int(metadata["position"]):
+            raise ValueError(
+                "Configured paired_prompt position differs from the extracted vectors."
+            )
+        index = layers.index(layer)
+        direction = direction[index]
+        raw = raw[index]
+        metadata = {
+            **metadata,
+            "layer": layer,
+            "position": position,
+            "target_hook": f"blocks.{layer}.hook_resid_pre",
+        }
     return direction, raw, metadata
 
 
@@ -530,6 +562,20 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
                 model,
                 graph,
                 _prompts(model, run["dataset"]),
+                direction=direction,
+                target_hook=vector["target_hook"],
+                target_position=int(vector["position"]),
+                config=attribution,
+                integrated_gradients=True,
+            )
+        elif vector["vector_type"] == "paired_prompt":
+            _, positive_prompts, _ = _paired_system_prompts(
+                model, run["dataset"]
+            )
+            attribute(
+                model,
+                graph,
+                positive_prompts,
                 direction=direction,
                 target_hook=vector["target_hook"],
                 target_position=int(vector["position"]),
@@ -621,12 +667,17 @@ def run_tests(config: dict) -> dict:
         raise ValueError("Circuit and test corruption types differ.")
     set_selected_edges(graph, load_circuit_edge_names(circuit_path))
 
-    if config["eapig"]["corruption"] == "projection" and vector["vector_type"] == "pre_answer":
-        from .circuit import behavioural_sanity_check, evaluate_conditions
-        from .metrics import DEFAULT_ANSWER_STARTS, REFUSAL_PREFIXES
-        from .model import first_token_ids
+    if (
+        config["eapig"]["corruption"] == "projection"
+        and vector["vector_type"] in {"pre_answer", "paired_prompt"}
+    ):
+        from .circuit import evaluate_conditions
 
-        prompts = _prompts(model, test["dataset"])
+        prompts = (
+            _paired_system_prompts(model, test["dataset"])[1]
+            if vector["vector_type"] == "paired_prompt"
+            else _prompts(model, test["dataset"])
+        )
         conditions = evaluate_conditions(
             model,
             graph,
@@ -641,8 +692,13 @@ def run_tests(config: dict) -> dict:
             name: conditions[name].projection
             for name in ("clean", "corrupt", "circuit_only", "circuit_ablated")
         }
-        behavior = (
-            behavioural_sanity_check(
+        behavior = None
+        if vector["vector_type"] == "pre_answer" and test.get("behavior", False):
+            from .circuit import behavioural_sanity_check
+            from .metrics import DEFAULT_ANSWER_STARTS, REFUSAL_PREFIXES
+            from .model import first_token_ids
+
+            behavior = behavioural_sanity_check(
                 model,
                 graph,
                 prompts,
@@ -650,13 +706,12 @@ def run_tests(config: dict) -> dict:
                 target_hook=vector["target_hook"],
                 target_position=int(vector["position"]),
                 refusal_ids=first_token_ids(model.tokenizer, REFUSAL_PREFIXES),
-                answer_ids=first_token_ids(model.tokenizer, DEFAULT_ANSWER_STARTS),
+                answer_ids=first_token_ids(
+                    model.tokenizer, DEFAULT_ANSWER_STARTS
+                ),
                 max_prompts=len(prompts),
                 max_new_tokens=int(test.get("max_new_tokens", 16)),
             )
-            if test.get("behavior", False)
-            else None
-        )
     elif config["eapig"]["corruption"] == "projection":
         from .circuit import _mixed_forward, _normal_forward
         from .eapig import _response_mask, response_logprob_values
