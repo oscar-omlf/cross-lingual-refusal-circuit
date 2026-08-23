@@ -27,7 +27,8 @@
     "batch_size": 1,
     "max_length": 1024,
     "ig_steps": 5,
-    "k_values": [100, 500, 1000],
+    "k_values": [100, 500, 1000, 3000],
+    "prune_parentless": false,
     "output_dir": "results/qwen2.5-7b-instruct/sycophancy/generation/eapig_upstream_steering_minus2"
   },
   "tests": {
