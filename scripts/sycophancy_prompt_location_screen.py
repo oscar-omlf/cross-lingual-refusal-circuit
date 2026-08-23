@@ -176,15 +176,18 @@ def generate_rows(
         inputs = {name: value.to(model.device) for name, value in inputs.items()}
         prompt_length = int(inputs["input_ids"].shape[1])
         handles = []
+        runtime_position = -1 if vector is not None and position is None else position
         if vector is not None:
-            if layer is None or position is None:
-                raise ValueError("Intervened generation requires layer and position.")
+            if layer is None or runtime_position is None:
+                raise ValueError(
+                    "Intervened generation requires a layer and runtime position."
+                )
             handles = install_intervention_hooks(
                 model,
                 mode=intervention_mode,
                 vector=vector,
                 layer=layer,
-                position=position,
+                position=runtime_position,
                 coefficient=coefficient,
             )
         try:
@@ -210,7 +213,7 @@ def generate_rows(
                 {
                     "record_id": (
                         f"{condition}-"
-                        f"p{position if position is not None else 0}-"
+                        f"p{position if position is not None else 'none'}-"
                         f"l{layer if layer is not None else 0}-"
                         f"{source['id']}"
                     ),
@@ -221,6 +224,9 @@ def generate_rows(
                     "condition": condition,
                     "layer": layer,
                     "position": position,
+                    "runtime_token_position": (
+                        runtime_position if vector is not None else None
+                    ),
                     "intervention_mode": intervention_mode,
                     "coefficient": (
                         None if intervention_mode == "projection" else coefficient
@@ -257,6 +263,8 @@ def main() -> None:
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--minus1-root", type=Path, default=DEFAULT_MINUS1_ROOT)
     parser.add_argument("--minus2-root", type=Path, default=DEFAULT_MINUS2_ROOT)
+    parser.add_argument("--fixed-vector", type=Path)
+    parser.add_argument("--fixed-layer", type=int)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--num-questions", type=int, default=16)
     parser.add_argument("--coefficient", type=float, default=2.0)
@@ -277,6 +285,14 @@ def main() -> None:
 
     if args.num_questions <= 0 or args.coefficient <= 0 or args.batch_size <= 0:
         raise ValueError("Question count, coefficient, and batch size must be positive.")
+    fixed_screen = args.fixed_vector is not None or args.fixed_layer is not None
+    if (args.fixed_vector is None) != (args.fixed_layer is None):
+        raise ValueError("--fixed-vector and --fixed-layer must be provided together.")
+    if fixed_screen and (
+        args.induction_mode != "coefficient"
+        or args.ablation_mode != "coefficient"
+    ):
+        raise ValueError("Fixed-vector mode supports coefficient steering only.")
 
     config_path = resolve(args.config)
     dataset_path = resolve(args.dataset)
@@ -301,30 +317,47 @@ def main() -> None:
         raise ValueError(f"Instruction pairs are not balanced: {dict(pair_counts)}")
 
     candidate_sets = {}
-    for position, root in (
-        (-1, resolve(args.minus1_root)),
-        (-2, resolve(args.minus2_root)),
-    ):
-        metadata, directions = load_candidates(root, position)
-        candidate_sets[position] = {
-            "root": root,
-            "metadata": metadata,
-            "directions": directions,
-            "by_layer": {
-                int(layer): directions[index]
-                for index, layer in enumerate(metadata["layers"])
-            },
-            "valid_layers": {int(layer) for layer in metadata["valid_layers"]},
+    if fixed_screen:
+        fixed_vector_path = resolve(args.fixed_vector)
+        fixed_vector = torch.load(
+            fixed_vector_path, map_location="cpu", weights_only=True
+        ).float()
+        if fixed_vector.ndim != 1:
+            raise ValueError(
+                f"Expected a one-dimensional fixed vector, found "
+                f"{tuple(fixed_vector.shape)}."
+            )
+        screen_positions = (None,)
+        valid_layers = [args.fixed_layer]
+        candidate_sets[None] = {
+            "by_layer": {args.fixed_layer: fixed_vector},
         }
+    else:
+        screen_positions = (-1, -2)
+        for position, root in (
+            (-1, resolve(args.minus1_root)),
+            (-2, resolve(args.minus2_root)),
+        ):
+            metadata, directions = load_candidates(root, position)
+            candidate_sets[position] = {
+                "root": root,
+                "metadata": metadata,
+                "directions": directions,
+                "by_layer": {
+                    int(layer): directions[index]
+                    for index, layer in enumerate(metadata["layers"])
+                },
+                "valid_layers": {int(layer) for layer in metadata["valid_layers"]},
+            }
 
-    valid_layers = sorted(
-        candidate_sets[-1]["valid_layers"]
-        & candidate_sets[-2]["valid_layers"]
-    )
-    if valid_layers != list(range(1, 28)):
-        raise ValueError(
-            f"Expected common valid layers 1-27, found {valid_layers}."
+        valid_layers = sorted(
+            candidate_sets[-1]["valid_layers"]
+            & candidate_sets[-2]["valid_layers"]
         )
+        if valid_layers != list(range(1, 28)):
+            raise ValueError(
+                f"Expected common valid layers 1-27, found {valid_layers}."
+            )
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -370,7 +403,7 @@ def main() -> None:
     )
     write_jsonl(responses_path, baseline_rows)
 
-    for position in (-1, -2):
+    for position in screen_positions:
         vectors = candidate_sets[position]["by_layer"]
         for layer in valid_layers:
             print(
@@ -416,7 +449,7 @@ def main() -> None:
 
     generated_rows = read_jsonl(responses_path)
     expected_rows = 2 * args.num_questions + (
-        2 * len(valid_layers) * 2 * args.num_questions
+        2 * len(screen_positions) * len(valid_layers) * args.num_questions
     )
     if len(generated_rows) != expected_rows:
         raise RuntimeError(
@@ -427,9 +460,12 @@ def main() -> None:
         "schema_version": 1,
         "status": "generation_complete_pending_persona_judge",
         "purpose": (
-            "Causal layer and prompt-suffix-position selection for the "
+            "Fixed-layer bidirectional steering test for a saved sycophancy vector."
+            if fixed_screen
+            else "Causal layer and prompt-suffix-position selection for the "
             "sycophancy paired-prompt vector."
         ),
+        "screen_type": "fixed_vector" if fixed_screen else "prompt_location",
         "model": model_cfg,
         "dataset": {
             "path": str(dataset_path),
@@ -437,9 +473,9 @@ def main() -> None:
             "questions": len(rows),
             "instruction_pair_counts": dict(sorted(pair_counts.items())),
         },
-        "candidate_positions": [-1, -2],
+        "candidate_positions": [] if fixed_screen else [-1, -2],
         "candidate_layers": valid_layers,
-        "excluded_zero_vector_layers": [0],
+        "excluded_zero_vector_layers": [] if fixed_screen else [0],
         "conditions": {
             "baseline_negative": "anti-sycophantic system instruction, no steering",
             "baseline_positive": "sycophantic system instruction, no steering",
@@ -447,6 +483,8 @@ def main() -> None:
                 "anti-sycophantic system instruction; "
                 + (
                     f"+{args.coefficient:g} times the matched raw prompt vector"
+                    if args.induction_mode == "coefficient" and not fixed_screen
+                    else f"+{args.coefficient:g} times the fixed raw vector"
                     if args.induction_mode == "coefficient"
                     else "global projection of the matched vector"
                 )
@@ -455,6 +493,8 @@ def main() -> None:
                 "sycophantic system instruction; "
                 + (
                     f"-{args.coefficient:g} times the matched raw prompt vector"
+                    if args.ablation_mode == "coefficient" and not fixed_screen
+                    else f"-{args.coefficient:g} times the fixed raw vector"
                     if args.ablation_mode == "coefficient"
                     else "global projection of the matched vector"
                 )
@@ -465,8 +505,10 @@ def main() -> None:
             "induction_mode": args.induction_mode,
             "ablation_mode": args.ablation_mode,
             "coefficient_timing": (
-                "extraction suffix position on prompt prefill, then every cached "
-                "decode step at the matched layer"
+                "final prompt token, then every cached decode step at the fixed layer"
+                if fixed_screen
+                else "extraction suffix position on prompt prefill, then every "
+                "cached decode step at the matched layer"
             ),
             "projection_sites": (
                 "every layer and token position: transformer block input, complete "
@@ -484,18 +526,31 @@ def main() -> None:
             "required_protocol": (
                 "Persona Vectors sycophancy 0-100 judge and coherence 0-100 judge"
             ),
-            "reason": "The HPC environment has no OpenAI API credential.",
+            "reason": "Judging runs as a separate dependent stage.",
         },
-        "candidate_artifacts": {
-            str(position): {
-                "root": str(values["root"]),
-                "metadata_sha256": sha256_file(values["root"] / "metadata.json"),
-                "raw_directions_sha256": sha256_file(
-                    values["root"] / "raw_directions.pt"
-                ),
+        "candidate_artifacts": (
+            {
+                "fixed": {
+                    "path": str(fixed_vector_path),
+                    "sha256": sha256_file(fixed_vector_path),
+                    "layer": args.fixed_layer,
+                    "runtime_token_position": -1,
+                }
             }
-            for position, values in candidate_sets.items()
-        },
+            if fixed_screen
+            else {
+                str(position): {
+                    "root": str(values["root"]),
+                    "metadata_sha256": sha256_file(
+                        values["root"] / "metadata.json"
+                    ),
+                    "raw_directions_sha256": sha256_file(
+                        values["root"] / "raw_directions.pt"
+                    ),
+                }
+                for position, values in candidate_sets.items()
+            }
+        ),
         "artifacts": {
             "responses": {
                 "path": str(responses_path),

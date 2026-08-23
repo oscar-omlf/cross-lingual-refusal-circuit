@@ -174,9 +174,25 @@ def candidate_ranking(groups: list[dict]) -> dict:
             "Positive baseline must score above the negative baseline."
         )
     denominator = positive - negative
+    positions = sorted(
+        {
+            row["position"]
+            for row in groups
+            if row["condition"] in {"induction", "ablation"}
+        },
+        key=lambda value: value if value is not None else 0,
+    )
     candidates = []
-    for position in (-1, -2):
-        for layer in range(1, 28):
+    for position in positions:
+        layers = sorted(
+            {
+                row["layer"]
+                for row in groups
+                if row["condition"] in {"induction", "ablation"}
+                and row["position"] == position
+            }
+        )
+        for layer in layers:
             induction = lookup[("induction", position, layer)]
             ablation = lookup[("ablation", position, layer)]
             induction_effect = (
@@ -199,11 +215,11 @@ def candidate_ranking(groups: list[dict]) -> dict:
                     "position": position,
                     "layer": layer,
                     "induction_trait_mean": induction["trait_mean"],
-                    "projection_trait_mean": ablation["trait_mean"],
+                    "ablation_trait_mean": ablation["trait_mean"],
                     "induction_coherence_mean": induction["coherence_mean"],
-                    "projection_coherence_mean": ablation["coherence_mean"],
+                    "ablation_coherence_mean": ablation["coherence_mean"],
                     "induction_normalized_effect": induction_effect,
-                    "projection_normalized_effect": ablation_effect,
+                    "ablation_normalized_effect": ablation_effect,
                     "balanced_normalized_effect": balanced,
                     "cap_hits": induction["cap_hits"] + ablation["cap_hits"],
                 }
@@ -239,8 +255,22 @@ async def run(args: argparse.Namespace) -> None:
     metadata_path = output_dir / "judge_metadata.json"
 
     rows = read_jsonl(input_path)
-    if len(rows) != 1760 or len({row["record_id"] for row in rows}) != len(rows):
-        raise ValueError("Expected 1,760 unique response rows.")
+    source_metadata_path = input_path.parent / "metadata.json"
+    source_metadata = (
+        json.loads(source_metadata_path.read_text(encoding="utf-8"))
+        if source_metadata_path.exists()
+        else {}
+    )
+    expected_rows = int(
+        args.expected_rows
+        or source_metadata.get("generation", {}).get("expected_responses", 1760)
+    )
+    if len(rows) != expected_rows:
+        raise ValueError(
+            f"Expected {expected_rows:,} response rows, found {len(rows):,}."
+        )
+    if len({row["record_id"] for row in rows}) != len(rows):
+        raise ValueError("Response record IDs are not unique.")
     trait_prompt = json.loads(
         trait_data_path.read_text(encoding="utf-8")
     )["eval_prompt"]
@@ -361,6 +391,7 @@ def main() -> None:
     parser.add_argument("--checkpoint-rows", type=int, default=100)
     parser.add_argument("--max-attempts", type=int, default=8)
     parser.add_argument("--timeout", type=float, default=90.0)
+    parser.add_argument("--expected-rows", type=int)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
     if args.concurrency <= 0 or args.checkpoint_rows <= 0:
