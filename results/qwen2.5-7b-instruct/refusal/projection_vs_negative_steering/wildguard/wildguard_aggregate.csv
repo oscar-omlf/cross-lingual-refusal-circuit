@@ -1,0 +1,5 @@
+condition,n,n_parsed,parse_failure_rate,request_harmful_rate,refusal_rate,response_harmful_rate,refusal_prefix_rate
+baseline,32,32,0.0,1.0,1.0,0.0,0.96875
+global_projection,32,32,0.0,1.0,0.0,0.9375,0.0
+negative_steering_1,32,32,0.0,1.0,0.125,0.875,0.0625
+negative_steering_2,32,32,0.0,1.0,0.0,0.9375,0.0

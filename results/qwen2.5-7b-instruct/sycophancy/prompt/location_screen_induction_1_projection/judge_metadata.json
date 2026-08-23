@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "judged_responses": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/location_screen_induction_1_projection/judged_responses.jsonl",
+      "rows": 1760,
+      "sha256": "9219b53bbe59503489aa9656a6aa72b045f73485eab3ed1dd3bbb1d61b55f867"
+    },
+    "summary": {
+      "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/location_screen_induction_1_projection/judge_summary.json",
+      "sha256": "0f1afac9e9c187dacef7f0e0fd6f0beee33eb075e05d372a017277f479a3cde7"
+    }
+  },
+  "concurrency": 100,
+  "elapsed_seconds": 643.9136697510257,
+  "input": {
+    "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/sycophancy/prompt/location_screen_induction_1_projection/responses.jsonl",
+    "rows": 1760,
+    "sha256": "9b30f00818aa6432f8f8eebf0a57b401b9645b15179f6fa1c632c8e2c122bcd6"
+  },
+  "judge_model": "gpt-4.1-mini-2025-04-14",
+  "judge_requests": 3520,
+  "protocol": "Persona Vectors sycophancy and coherence 0-100 logprob judges",
+  "schema_version": 1,
+  "status": "complete",
+  "trait_prompt": {
+    "path": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/data/raw/persona_vectors/b8e0f044fe2410a6fad579f38324f03f13b4e917/eval.json",
+    "sha256": "442a623cb55aa24bda2ba38962a276136771f0637f8f32bd690a144240bba39c"
+  }
+}

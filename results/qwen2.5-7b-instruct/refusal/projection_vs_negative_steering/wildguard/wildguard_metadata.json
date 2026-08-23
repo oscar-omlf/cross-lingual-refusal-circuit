@@ -1,0 +1,17 @@
+{
+  "artifacts": {
+    "aggregate": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/refusal/projection_vs_negative_steering/wildguard/wildguard_aggregate.csv",
+    "instance_labels": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/refusal/projection_vs_negative_steering/wildguard/wildguard_instance_labels_no_text.csv"
+  },
+  "batch_size": 8,
+  "dataset": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/data/processed/qwen2.5-7b-instruct/trait_circuits/refusal/vector_validation.jsonl",
+  "generations": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/refusal/projection_vs_negative_steering/generations.jsonl",
+  "judge_model": "allenai/wildguard",
+  "max_new_tokens": 32,
+  "n_saved_generations": 128,
+  "new_target_model_generations": 0,
+  "prompt_text_saved": false,
+  "raw_judge_output_saved": false,
+  "response_text_saved": false,
+  "status": "complete"
+}

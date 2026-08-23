@@ -1,0 +1,70 @@
+{
+  "artifacts": {
+    "forward_metrics": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/refusal/projection_vs_negative_steering/forward_metrics.jsonl",
+    "generations": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/results/qwen2.5-7b-instruct/refusal/projection_vs_negative_steering/generations.jsonl"
+  },
+  "conditions": {
+    "baseline": "no intervention",
+    "global_projection": "unit-direction projection at every residual input, complete attention write, and MLP write in every layer and position",
+    "negative_steering_1": "add -1 times the raw DIM vector at every position of the selected layer 15",
+    "negative_steering_2": "add -2 times the raw DIM vector at every position of the selected layer 15"
+  },
+  "dataset": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/data/processed/qwen2.5-7b-instruct/trait_circuits/refusal/vector_validation.jsonl",
+  "generated_harmful_prompts": 32,
+  "max_new_tokens": 64,
+  "model": {
+    "dtype": "bfloat16",
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+  },
+  "results": {
+    "baseline": {
+      "generated_refusal_prefix_rate": 0.96875,
+      "harmful_mean_refusal_log_odds": 6.246508631855249,
+      "harmful_mean_target_projection": 16.880731627345085,
+      "harmful_positive_refusal_log_odds_rate": 1.0,
+      "harmless_mean_kl_from_baseline": 0.0,
+      "harmless_mean_refusal_log_odds": -15.377322252839804,
+      "harmless_mean_target_projection": -0.0159999318420887
+    },
+    "global_projection": {
+      "generated_refusal_prefix_rate": 0.0,
+      "harmful_mean_refusal_log_odds": -11.724085815250874,
+      "harmful_mean_target_projection": -0.002503957599401474,
+      "harmful_positive_refusal_log_odds_rate": 0.0,
+      "harmless_mean_kl_from_baseline": 0.13273916669038144,
+      "harmless_mean_refusal_log_odds": -15.894614681601524,
+      "harmless_mean_target_projection": -0.004015998914837837
+    },
+    "negative_steering_1": {
+      "generated_refusal_prefix_rate": 0.0625,
+      "harmful_mean_refusal_log_odds": -7.543775346130133,
+      "harmful_mean_target_projection": -3.216505253687501,
+      "harmful_positive_refusal_log_odds_rate": 0.1875,
+      "harmless_mean_kl_from_baseline": 0.3726045814940733,
+      "harmless_mean_refusal_log_odds": -14.782372860354371,
+      "harmless_mean_target_projection": -20.11393266916275
+    },
+    "negative_steering_2": {
+      "generated_refusal_prefix_rate": 0.0,
+      "harmful_mean_refusal_log_odds": -8.163700185716152,
+      "harmful_mean_target_projection": -23.30570939183235,
+      "harmful_positive_refusal_log_odds_rate": 0.0,
+      "harmless_mean_kl_from_baseline": 1.501833904418163,
+      "harmless_mean_refusal_log_odds": -10.505226835608482,
+      "harmless_mean_target_projection": -40.202512383461
+    }
+  },
+  "status": "complete",
+  "validation_counts": {
+    "harmful": 32,
+    "harmless": 32
+  },
+  "vector": {
+    "layer": 15,
+    "position": -2,
+    "raw_norm": 20.09413719177246,
+    "source": "/gpfs/home5/omiro1/cross-lingual-refusal-circuit-prompt-vector/old_results/qwen2.5-7b-instruct/polyrefuse/en/direction_paper_kl0p2",
+    "target_hook": "blocks.15.hook_resid_pre"
+  }
+}
