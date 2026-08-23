@@ -329,19 +329,35 @@ def _mixed_forward(
     patch_selected: bool,
     target_mask: torch.Tensor | None = None,
     cache_dtype: torch.dtype | None = None,
+    corrupt_fwd_hooks=None,
+    corrupt_cache_transform=None,
 ):
     """Run a clean prompt with selected or unselected edges replaced by corrupt cache."""
+    custom_corruption = (
+        corrupt_fwd_hooks is not None or corrupt_cache_transform is not None
+    )
+    if custom_corruption and (
+        corrupt_fwd_hooks is None or corrupt_cache_transform is None
+    ):
+        raise ValueError(
+            "Custom corruption requires both forward hooks and a cache transform."
+        )
     corrupt_cache: dict[str, torch.Tensor] = {}
     corrupt_receivers: dict[tuple[str, str | None], torch.Tensor] = {}
     corrupt_hooks = _source_cache_hooks(
         model,
         graph,
         corrupt_cache,
-        corruption_direction=direction,
+        corruption_direction=None if custom_corruption else direction,
+        cache_transform=corrupt_cache_transform,
         selected_only=True,
         storage_dtype=cache_dtype,
     )
-    corrupt_hooks += all_layer_ablation_hooks(model, direction)
+    corrupt_hooks += (
+        list(corrupt_fwd_hooks)
+        if custom_corruption
+        else all_layer_ablation_hooks(model, direction)
+    )
     if not patch_selected:
         # Receiver hooks follow the corruption hooks so a shared residual hook
         # records the actual counterfactual node input.

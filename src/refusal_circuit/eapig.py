@@ -17,7 +17,12 @@ from typing import Callable, Iterable
 import torch
 from tqdm.auto import tqdm
 
-from .interventions import all_layer_ablation_hooks, masked_activation_addition_hook
+from .interventions import (
+    all_layer_ablation_hooks,
+    all_layer_steering_hooks,
+    masked_activation_addition_hook,
+    steering_source_transform,
+)
 from .metrics import MaskedProjectionCapture, ProjectionCapture, refusal_log_odds
 from .model import tokenize_prompts
 
@@ -1027,6 +1032,9 @@ def attribute_response_average(
     target_hook: str,
     config: AttributionConfig,
     integrated_gradients: bool,
+    corruption: str = "projection",
+    raw_direction: torch.Tensor | None = None,
+    corrupt_coefficient: float | None = None,
 ) -> None:
     """Attribute mean response-token projection for teacher-forced transcripts.
 
@@ -1038,6 +1046,17 @@ def attribute_response_average(
         raise ValueError("Attribution requires at least one transcript.")
     if integrated_gradients and config.ig_steps <= 0:
         raise ValueError("ig_steps must be positive.")
+    if corruption not in {"projection", "upstream_steering"}:
+        raise ValueError(
+            "response-average corruption must be projection or upstream_steering."
+        )
+    if corruption == "upstream_steering":
+        if raw_direction is None or corrupt_coefficient is None:
+            raise ValueError(
+                "upstream_steering requires raw_direction and corrupt_coefficient."
+            )
+        if corrupt_coefficient >= 0:
+            raise ValueError("Upstream steering corruption coefficient must be negative.")
 
     device = next(model.parameters()).device
     scores = torch.zeros((graph.n_forward, graph.n_backward), device=device, dtype=torch.float32)
@@ -1054,31 +1073,78 @@ def attribute_response_average(
         batch_size, n_pos = tokens.shape
         response_mask = _response_mask(tokens, attention_mask, starts)
         total_examples += batch_size
-        fwd_corrupt, fwd_clean, bwd_hooks, activation_difference = _make_eap_hooks(
-            model, graph, batch_size, n_pos, scores, direction
+        if corruption == "projection":
+            corrupt_value = 1.0
+            eap_direction = direction
+            source_transform = None
+
+            def intervention_hooks(value: float):
+                return all_layer_ablation_hooks(
+                    model, direction, strength=value
+                )
+
+        else:
+            corrupt_value = float(corrupt_coefficient)
+            eap_direction = None
+            source_transform = steering_source_transform(
+                raw_direction,
+                coefficient=corrupt_value,
+            )
+
+            def intervention_hooks(value: float):
+                return (
+                    all_layer_steering_hooks(
+                        model,
+                        raw_direction,
+                        coefficient=value,
+                    )
+                    if value != 0
+                    else []
+                )
+
+        corrupt_hooks = intervention_hooks(corrupt_value)
+        path_values: Iterable[float] = (
+            steering_coefficient_path(corrupt_value, config.ig_steps)
+            if integrated_gradients
+            else (0.0,)
+        )
+        fwd_corrupt, fwd_clean, bwd_hooks, activation_difference = (
+            _make_eap_hooks(
+                model,
+                graph,
+                batch_size,
+                n_pos,
+                scores,
+                direction=eap_direction,
+                corrupt_source_transform=source_transform,
+            )
         )
         with torch.no_grad(), model.hooks(
-            fwd_hooks=fwd_corrupt + all_layer_ablation_hooks(model, direction, strength=1.0)
+            fwd_hooks=fwd_corrupt + corrupt_hooks
         ):
             _run_forward(model, tokens, attention_mask, fwd_corrupt)
         with torch.no_grad(), model.hooks(fwd_hooks=fwd_clean):
             _run_forward(model, tokens, attention_mask, fwd_clean)
 
-        path_alphas: Iterable[float] = (
-            (step / config.ig_steps for step in range(1, config.ig_steps + 1))
-            if integrated_gradients
-            else (1.0,)
-        )
-        for alpha in path_alphas:
+        for value in path_values:
             model.zero_grad(set_to_none=True)
             capture = MaskedProjectionCapture(direction=direction, mask=response_mask)
             metric_hook = [(target_hook, capture.hook)]
-            path_hooks = all_layer_ablation_hooks(model, direction, strength=1.0 - alpha)
+            path_hooks = intervention_hooks(value)
             with model.hooks(
-                fwd_hooks=[("hook_embed", _input_requires_grad)] + path_hooks + metric_hook,
+                fwd_hooks=[
+                    ("hook_embed", _input_requires_grad),
+                    *path_hooks,
+                    *metric_hook,
+                ],
                 bwd_hooks=bwd_hooks,
             ):
-                _run_forward(model, tokens, attention_mask, path_hooks + metric_hook)
+                _run_forward(
+                    model,
+                    tokens,
+                    attention_mask,
+                    path_hooks + metric_hook,
+                )
                 if capture.activation is None:
                     raise RuntimeError("The persona target residual metric hook did not fire.")
                 capture.activation.retain_grad()

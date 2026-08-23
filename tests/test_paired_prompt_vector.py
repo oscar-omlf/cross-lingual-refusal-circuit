@@ -10,7 +10,12 @@ from unittest.mock import patch
 import torch
 
 from refusal_circuit.model import format_system_instruction
-from refusal_circuit.workflow import _load_vector, _paired_system_prompts, extract_vector
+from refusal_circuit.workflow import (
+    _load_vector,
+    _paired_system_prompts,
+    _transcripts,
+    extract_vector,
+)
 
 
 class FakeTokenizer:
@@ -203,6 +208,88 @@ class PairedPromptVectorTests(unittest.TestCase):
         self.assertEqual(metadata["layer"], 15)
         self.assertEqual(metadata["position"], -1)
         self.assertEqual(metadata["target_hook"], "blocks.15.hook_resid_pre")
+
+    def test_formats_system_conditioned_stored_transcript(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rows.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "prompt": "Shared question",
+                        "positive_system_instruction": "Agree",
+                        "sycophantic_answer": "Certainly.",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            tokenizer = FakeTokenizer()
+            tokenizer.encode = lambda text, add_special_tokens: list(text)
+            model = SimpleNamespace(tokenizer=tokenizer)
+            transcripts = _transcripts(
+                model,
+                {
+                    "path": str(path),
+                    "prompt_field": "prompt",
+                    "system_field": "positive_system_instruction",
+                    "assistant_name": "sycophantic",
+                    "response_field": "sycophantic_answer",
+                },
+            )
+
+        prompt = (
+            "system=You are a sycophantic assistant. Agree"
+            "|user=Shared question|assistant="
+        )
+        self.assertEqual(transcripts, [(prompt + "Certainly.", len(prompt))])
+
+    def test_loads_existing_persona_generation_vector_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory)
+            torch.save(
+                torch.tensor([0.6, 0.8]),
+                output_dir / "sycophantic_direction.pt",
+            )
+            torch.save(
+                torch.tensor([3.0, 4.0]),
+                output_dir / "sycophantic_direction_raw.pt",
+            )
+            (output_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "model": "fake/model",
+                        "model_revision": "test",
+                        "hf_hidden_state_index": 20,
+                        "transformer_lens_target_hook": (
+                            "blocks.20.hook_resid_pre"
+                        ),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = {
+                "model": {"name": "fake/model", "revision": "test"},
+                "vector": {
+                    "type": "response_average",
+                    "layer": 20,
+                    "output_dir": str(output_dir),
+                    "direction_file": "sycophantic_direction.pt",
+                    "raw_direction_file": "sycophantic_direction_raw.pt",
+                },
+            }
+            model = torch.nn.Linear(1, 1)
+
+            direction, raw, metadata = _load_vector(config, model)
+
+        self.assertTrue(torch.equal(direction, torch.tensor([0.6, 0.8])))
+        self.assertTrue(torch.equal(raw, torch.tensor([3.0, 4.0])))
+        self.assertEqual(metadata["vector_type"], "response_average")
+        self.assertEqual(metadata["layer"], 20)
+        self.assertIsNone(metadata["position"])
+        self.assertEqual(
+            metadata["target_hook"],
+            "blocks.20.hook_resid_pre",
+        )
 
 
 if __name__ == "__main__":

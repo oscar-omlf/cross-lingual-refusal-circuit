@@ -142,12 +142,26 @@ def _transcripts(model, spec: dict, max_length: int | None = None) -> list[tuple
     rows = _select_rows(_rows(spec["path"]), spec)
     prompt_field = spec.get("prompt_field", "prompt")
     response_field = spec.get("response_field", "answer")
+    system_field = spec.get("system_field")
     max_length = spec.get("max_length", max_length)
     output = []
     for row in rows:
         prompt = row[prompt_field]
         response = row[response_field]
-        if not spec.get("formatted", True):
+        if system_field is not None:
+            from .model import format_system_instruction
+            from .persona import make_system_prompt
+
+            system = row[system_field]
+            assistant_name = spec.get("assistant_name")
+            if assistant_name:
+                system = make_system_prompt(assistant_name, system)
+            prompt = format_system_instruction(
+                model.tokenizer,
+                system,
+                prompt,
+            )
+        elif not spec.get("formatted", True):
             from .model import format_instruction
 
             prompt = format_instruction(model.tokenizer, prompt)
@@ -451,17 +465,28 @@ def extract_vector(config: dict, *, overwrite: bool = False) -> dict:
 
 def _load_vector(config: dict, model):
     vector_config = config["vector"]
+    root = _path(vector_config["output_dir"])
     if vector_config["type"] == "paired_prompt":
-        root = _path(vector_config["output_dir"])
         direction_path = root / "directions.pt"
         raw_path = root / "raw_directions.pt"
         metadata_path = root / "metadata.json"
     else:
-        direction_path, raw_path, metadata_path = _vector_paths(config)
+        direction_path = root / vector_config.get("direction_file", "direction.pt")
+        raw_path = root / vector_config.get("raw_direction_file", "raw_direction.pt")
+        metadata_path = root / vector_config.get("metadata_file", "metadata.json")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    if metadata["model"]["name"] != config["model"]["name"]:
+    saved_model = metadata["model"]
+    saved_model_name = (
+        saved_model["name"] if isinstance(saved_model, dict) else saved_model
+    )
+    saved_revision = (
+        saved_model.get("revision")
+        if isinstance(saved_model, dict)
+        else metadata.get("model_revision")
+    )
+    if saved_model_name != config["model"]["name"]:
         raise ValueError("Vector and run config use different models.")
-    if metadata["model"].get("revision") != config["model"].get("revision"):
+    if saved_revision != config["model"].get("revision"):
         raise ValueError("Vector and run config use different model revisions.")
     device = next(model.parameters()).device
     direction = torch.load(direction_path, map_location=device, weights_only=True)
@@ -490,6 +515,26 @@ def _load_vector(config: dict, model):
             "layer": layer,
             "position": position,
             "target_hook": f"blocks.{layer}.hook_resid_pre",
+        }
+    elif vector_config["type"] == "response_average":
+        layer = int(
+            vector_config.get(
+                "layer",
+                metadata.get("layer", metadata.get("hf_hidden_state_index")),
+            )
+        )
+        metadata = {
+            **metadata,
+            "vector_type": "response_average",
+            "layer": layer,
+            "position": None,
+            "target_hook": vector_config.get(
+                "target_hook",
+                metadata.get(
+                    "transformer_lens_target_hook",
+                    f"blocks.{layer}.hook_resid_pre",
+                ),
+            ),
         }
     return direction, raw, metadata
 
@@ -592,6 +637,27 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
                 config=attribution,
                 integrated_gradients=True,
             )
+    elif corruption == "upstream_steering":
+        if vector["vector_type"] != "response_average":
+            raise ValueError(
+                "upstream_steering currently requires a response_average vector."
+            )
+        coefficient = float(run["coefficient"])
+        if coefficient >= 0:
+            raise ValueError("Upstream steering corruption coefficient must be negative.")
+        graph = make_projection_graph(model, layer)
+        attribute_response_average(
+            model,
+            graph,
+            _transcripts(model, run["dataset"], run.get("max_length", 512)),
+            direction=direction,
+            raw_direction=raw,
+            target_hook=vector["target_hook"],
+            config=attribution,
+            integrated_gradients=True,
+            corruption="upstream_steering",
+            corrupt_coefficient=coefficient,
+        )
     elif corruption == "steering":
         graph = make_steering_to_logits_graph(model, layer)
         coefficient = float(run["coefficient"])
@@ -609,7 +675,9 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
         if diagnostics["clean_minus_corrupt"] <= 0:
             raise RuntimeError("Negative steering did not reduce the response metric.")
     else:
-        raise ValueError("eapig.corruption must be projection or steering.")
+        raise ValueError(
+            "eapig.corruption must be projection, upstream_steering, or steering."
+        )
     output.mkdir(parents=True, exist_ok=True)
     scores = output / "edge_scores.parquet"
     write_edge_scores_parquet(graph, scores)
@@ -657,7 +725,7 @@ def run_tests(config: dict) -> dict:
     model = _model(config, hook_mode="eap")
     direction, raw, vector = _load_vector(config, model)
     layer = int(vector["layer"])
-    if config["eapig"]["corruption"] == "projection":
+    if config["eapig"]["corruption"] in {"projection", "upstream_steering"}:
         graph = make_projection_graph(model, layer)
     else:
         graph = make_steering_to_logits_graph(model, layer)
@@ -712,11 +780,41 @@ def run_tests(config: dict) -> dict:
                 max_prompts=len(prompts),
                 max_new_tokens=int(test.get("max_new_tokens", 16)),
             )
-    elif config["eapig"]["corruption"] == "projection":
+    elif config["eapig"]["corruption"] in {
+        "projection",
+        "upstream_steering",
+    }:
         from .circuit import _mixed_forward, _normal_forward
         from .eapig import _response_mask, response_logprob_values
-        from .interventions import all_layer_ablation_hooks
+        from .interventions import (
+            all_layer_ablation_hooks,
+            all_layer_steering_hooks,
+            steering_source_transform,
+        )
         from .model import tokenize_prompts
+
+        corruption = config["eapig"]["corruption"]
+        if corruption == "projection":
+            corrupt_hooks = all_layer_ablation_hooks(model, direction)
+            mixed_kwargs = {}
+        else:
+            coefficient = float(config["eapig"]["coefficient"])
+            if coefficient >= 0:
+                raise ValueError(
+                    "Upstream steering corruption coefficient must be negative."
+                )
+            corrupt_hooks = all_layer_steering_hooks(
+                model,
+                raw,
+                coefficient=coefficient,
+            )
+            mixed_kwargs = {
+                "corrupt_fwd_hooks": corrupt_hooks,
+                "corrupt_cache_transform": steering_source_transform(
+                    raw,
+                    coefficient=coefficient,
+                ),
+            }
 
         values = {name: [] for name in ("clean", "corrupt", "circuit_only", "circuit_ablated")}
         behavior_values = {name: [] for name in values}
@@ -733,18 +831,18 @@ def run_tests(config: dict) -> dict:
                 "corrupt": _normal_forward(
                     model, tokens, mask, target_hook=vector["target_hook"],
                     target_position=-1, direction=direction,
-                    fwd_hooks=all_layer_ablation_hooks(model, direction),
+                    fwd_hooks=corrupt_hooks,
                     target_mask=response_mask
                 ),
                 "circuit_only": _mixed_forward(
                     model, graph, tokens, mask, target_hook=vector["target_hook"],
                     target_position=-1, direction=direction, patch_selected=False,
-                    target_mask=response_mask
+                    target_mask=response_mask, **mixed_kwargs
                 ),
                 "circuit_ablated": _mixed_forward(
                     model, graph, tokens, mask, target_hook=vector["target_hook"],
                     target_position=-1, direction=direction, patch_selected=True,
-                    target_mask=response_mask
+                    target_mask=response_mask, **mixed_kwargs
                 ),
             }
             for name, (projection, logits) in runs.items():

@@ -159,6 +159,54 @@ def all_layer_ablation_hooks(model, direction: torch.Tensor, *, strength: float 
     return hooks
 
 
+def all_layer_steering_hooks(
+    model,
+    vector: torch.Tensor,
+    *,
+    coefficient: float,
+):
+    """Add a raw steering vector at the global RQ1 intervention sites."""
+    return [
+        (
+            f"blocks.{layer}.{suffix}",
+            activation_addition_hook(
+                vector, coefficient=coefficient, position=None
+            ),
+        )
+        for layer in range(model.cfg.n_layers)
+        for suffix in ("hook_resid_pre", "hook_attn_out", "hook_mlp_out")
+    ]
+
+
+def steering_source_transform(
+    vector: torch.Tensor,
+    *,
+    coefficient: float,
+):
+    """Return the matching EAP source-cache transform for global steering.
+
+    EAP stores attention as separate head contributions, while the model
+    intervention adds the vector once to the complete attention output.
+    Distributing that addition evenly across cached heads preserves the exact
+    summed residual write.
+    """
+
+    def transform(source_name: str, activations: torch.Tensor) -> torch.Tensor:
+        addition = vector.to(device=activations.device, dtype=activations.dtype)
+        if addition.ndim != 1 or addition.numel() != activations.shape[-1]:
+            raise ValueError("steering vector shape does not match activations")
+        if source_name.endswith(".attn.hook_result"):
+            if activations.ndim != 4 or activations.shape[2] <= 0:
+                raise ValueError(
+                    "attention source activations must have shape "
+                    "[batch, position, head, d_model]"
+                )
+            addition = addition / activations.shape[2]
+        return activations + float(coefficient) * addition
+
+    return transform
+
+
 def addition_hooks(
     layer: int,
     vector: torch.Tensor,
