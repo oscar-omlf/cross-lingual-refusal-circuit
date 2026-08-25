@@ -1,0 +1,47 @@
+{
+  "trait": "sycophancy",
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "dtype": "bfloat16",
+    "hook_mode": "standard"
+  },
+  "vector": {
+    "type": "paired_prompt",
+    "layer": 15,
+    "position": -1,
+    "output_dir": "results/qwen2.5-7b-instruct/sycophancy/prompt/vector_candidates"
+  },
+  "eapig": {
+    "corruption": "contrastive_prompts",
+    "target_scope": "all_prompt_tokens",
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy/eapig_token_aligned.jsonl",
+      "num_examples": 16,
+      "prompt_field": "prompt",
+      "positive_system_field": "positive_system_instruction",
+      "negative_system_field": "negative_system_instruction",
+      "assistant_name": "sycophantic"
+    },
+    "batch_size": 1,
+    "max_length": 512,
+    "ig_steps": 5,
+    "k_values": [500, 3000],
+    "prune_parentless": false,
+    "output_dir": "results/qwen2.5-7b-instruct/sycophancy/prompt/eapig_natural_pair_all_prompt_pilot_n16"
+  },
+  "tests": {
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy/circuit_selection_token_aligned.jsonl",
+      "num_examples": 16,
+      "prompt_field": "prompt",
+      "positive_system_field": "positive_system_instruction",
+      "negative_system_field": "negative_system_instruction",
+      "assistant_name": "sycophantic"
+    },
+    "circuit_path": "results/qwen2.5-7b-instruct/sycophancy/prompt/eapig_natural_pair_all_prompt_pilot_n16/circuits/eapig_top_3000.json",
+    "batch_size": 1,
+    "max_length": 512,
+    "output_path": "results/qwen2.5-7b-instruct/sycophancy/prompt/eapig_natural_pair_all_prompt_pilot_n16/circuit_selection_top_3000.json"
+  }
+}

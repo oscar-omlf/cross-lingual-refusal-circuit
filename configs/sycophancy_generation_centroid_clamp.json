@@ -1,0 +1,48 @@
+{
+  "trait": "sycophancy",
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "dtype": "bfloat16",
+    "hook_mode": "standard"
+  },
+  "vector": {
+    "type": "response_average",
+    "layer": 20,
+    "output_dir": "results/qwen2.5-7b-instruct/sycophancy/generation/vector",
+    "direction_file": "sycophantic_direction.pt",
+    "raw_direction_file": "sycophantic_direction_raw.pt"
+  },
+  "eapig": {
+    "corruption": "negative_centroid_clamp",
+    "negative_mean_file": "sycophantic_response_avg_neg_mean.pt",
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy/eapig.jsonl",
+      "num_examples": 64,
+      "prompt_field": "prompt",
+      "system_field": "positive_system_instruction",
+      "assistant_name": "sycophantic",
+      "response_field": "sycophantic_answer"
+    },
+    "batch_size": 1,
+    "max_length": 1024,
+    "ig_steps": 5,
+    "k_values": [100, 500, 1000, 3000],
+    "prune_parentless": false,
+    "output_dir": "results/qwen2.5-7b-instruct/sycophancy/generation/eapig_negative_centroid_clamp"
+  },
+  "tests": {
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy/circuit_selection.jsonl",
+      "num_examples": 64,
+      "prompt_field": "prompt",
+      "system_field": "positive_system_instruction",
+      "assistant_name": "sycophantic",
+      "response_field": "sycophantic_answer"
+    },
+    "circuit_path": "results/qwen2.5-7b-instruct/sycophancy/generation/eapig_negative_centroid_clamp/circuits/eapig_top_500.json",
+    "batch_size": 1,
+    "max_length": 1024,
+    "output_path": "results/qwen2.5-7b-instruct/sycophancy/generation/eapig_negative_centroid_clamp/circuit_selection_top_500.json"
+  }
+}

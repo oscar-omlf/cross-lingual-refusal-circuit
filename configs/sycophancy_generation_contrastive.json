@@ -1,0 +1,34 @@
+{
+  "trait": "sycophancy",
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "dtype": "bfloat16",
+    "hook_mode": "standard"
+  },
+  "vector": {
+    "type": "response_average",
+    "layer": 20,
+    "output_dir": "results/qwen2.5-7b-instruct/sycophancy/generation/vector",
+    "direction_file": "sycophantic_direction.pt",
+    "raw_direction_file": "sycophantic_direction_raw.pt"
+  },
+  "eapig": {
+    "corruption": "contrastive_prompts",
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/sycophancy/eapig_token_aligned.jsonl",
+      "num_examples": 64,
+      "prompt_field": "prompt",
+      "positive_system_field": "positive_system_instruction",
+      "negative_system_field": "negative_system_instruction",
+      "assistant_name": "sycophantic",
+      "response_field": "sycophantic_answer"
+    },
+    "batch_size": 1,
+    "max_length": 1024,
+    "ig_steps": 5,
+    "k_values": [3000],
+    "prune_parentless": false,
+    "output_dir": "results/qwen2.5-7b-instruct/sycophancy/generation/eapig_contrastive_aligned_prompts"
+  }
+}

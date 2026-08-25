@@ -7,6 +7,8 @@ names and model configuration are part of the experimental protocol.
 
 from __future__ import annotations
 
+import inspect
+import textwrap
 from typing import Iterable
 
 import torch
@@ -161,13 +163,42 @@ def validate_memory_efficient_split_qkv_projection(model) -> None:
         )
 
 
+def memory_efficient_attention_result(
+    z: torch.Tensor,
+    weight: torch.Tensor,
+    *,
+    position_chunk_size: int = 16,
+) -> torch.Tensor:
+    """Compute per-head attention results without the full broadcast tensor.
+
+    TransformerLens' ``use_attn_result`` path broadcasts tensors with shapes
+    ``[batch, position, head, d_head, 1]`` and
+    ``[1, 1, head, d_head, d_model]`` before reducing over ``d_head``.  Token
+    positions are independent, so processing them in chunks preserves the
+    exact hook values while bounding the temporary allocation.
+    """
+    if position_chunk_size <= 0:
+        raise ValueError("position_chunk_size must be positive")
+    if z.ndim != 5 or weight.ndim != 5:
+        raise ValueError("z and weight must be the rearranged 5D attention tensors")
+    return torch.cat(
+        [
+            (z[:, start : start + position_chunk_size] * weight).sum(-2)
+            for start in range(0, z.shape[1], position_chunk_size)
+        ],
+        dim=1,
+    )
+
+
 def install_memory_efficient_split_qkv_projection() -> None:
-    """Replace TransformerLens' broadcast split-QKV contraction in-place.
+    """Replace TransformerLens' memory-heavy EAP contractions in-place.
 
     TransformerLens imports the helper into the component modules, so those
     bound module globals must be replaced as well as the utility definition.
-    This changes only the contraction implementation, not model weights,
-    hooks, grouped-query expansion, or circuit intervention semantics.
+    Its per-head result contraction is inline in ``AbstractAttention.forward``;
+    replace that single expression from the installed, pinned source. This
+    changes only contraction scheduling, not model weights, hooks,
+    grouped-query expansion, or circuit intervention semantics.
     """
     from transformer_lens.components import abstract_attention
     from transformer_lens.components import grouped_query_attention
@@ -178,6 +209,39 @@ def install_memory_efficient_split_qkv_projection() -> None:
     grouped_query_attention.complex_attn_linear = (
         memory_efficient_complex_attn_linear
     )
+
+    attention_class = abstract_attention.AbstractAttention
+    marker = "_refusal_circuit_chunked_attention_result"
+    if getattr(attention_class, marker, False):
+        return
+
+    source = textwrap.dedent(inspect.getsource(attention_class.forward))
+    original = "unhooked_result = (z * w).sum(-2)"
+    replacement = (
+        "unhooked_result = memory_efficient_attention_result(z, w)"
+    )
+    if source.count(original) != 1:
+        raise RuntimeError(
+            "Pinned TransformerLens AbstractAttention.forward no longer has "
+            "the expected attention-result contraction."
+        )
+    namespace = dict(abstract_attention.__dict__)
+    namespace["memory_efficient_attention_result"] = (
+        memory_efficient_attention_result
+    )
+    exec(
+        compile(
+            source.replace(original, replacement),
+            abstract_attention.__file__,
+            "exec",
+        ),
+        namespace,
+    )
+    patched_forward = namespace["forward"]
+    patched_forward.__module__ = attention_class.forward.__module__
+    patched_forward.__qualname__ = attention_class.forward.__qualname__
+    attention_class.forward = patched_forward
+    setattr(attention_class, marker, True)
 
 
 def load_model(

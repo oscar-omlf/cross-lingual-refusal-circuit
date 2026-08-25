@@ -331,6 +331,7 @@ def _mixed_forward(
     cache_dtype: torch.dtype | None = None,
     corrupt_fwd_hooks=None,
     corrupt_cache_transform=None,
+    mixed_fwd_hooks=None,
 ):
     """Run a clean prompt with selected or unselected edges replaced by corrupt cache."""
     custom_corruption = (
@@ -389,6 +390,7 @@ def _mixed_forward(
             graph, corrupt_cache, mixed_cache, corrupt_receivers
         )
     )
+    mixed_hooks += list(mixed_fwd_hooks or [])
     mixed_hooks += [(target_hook, capture.hook)]
     with torch.inference_mode(), model.hooks(fwd_hooks=mixed_hooks):
         logits = model(tokens, attention_mask=attention_mask)

@@ -35,15 +35,21 @@ def _rows(path: str | Path) -> list[dict]:
 
 
 def _model(config: dict, *, hook_mode: str | None = None):
-    from .model import load_model
+    from .model import (
+        install_memory_efficient_split_qkv_projection,
+        load_model,
+    )
 
     model = config["model"]
+    effective_hook_mode = hook_mode or model.get("hook_mode", "eap")
+    if effective_hook_mode == "eap":
+        install_memory_efficient_split_qkv_projection()
     return load_model(
         model["name"],
         revision=model.get("revision"),
         device=model.get("device"),
         dtype=model.get("dtype", "bfloat16"),
-        hook_mode=hook_mode or model.get("hook_mode", "eap"),
+        hook_mode=effective_hook_mode,
     )
 
 
@@ -171,6 +177,50 @@ def _transcripts(model, spec: dict, max_length: int | None = None) -> list[tuple
         if max_length is not None and length > int(max_length):
             raise ValueError("Response objectives cannot truncate transcripts.")
         output.append((text, start))
+    return output
+
+
+def _paired_response_transcripts(
+    model, spec: dict, max_length: int | None = None
+) -> list[tuple[str, str, int]]:
+    """Build token-aligned positive/negative prompts with shared responses."""
+    rows, positive_prompts, negative_prompts = _paired_system_prompts(model, spec)
+    response_fields = spec.get("response_fields")
+    if response_fields is None:
+        response_fields = [spec.get("response_field", "answer")]
+    response_fields = [str(field) for field in response_fields]
+    if not response_fields or len(response_fields) != len(set(response_fields)):
+        raise ValueError("response_fields must be non-empty and unique.")
+    max_length = spec.get("max_length", max_length)
+    output = []
+    for row, positive_prompt, negative_prompt in zip(
+        rows, positive_prompts, negative_prompts, strict=True
+    ):
+        positive_ids = model.tokenizer.encode(
+            positive_prompt, add_special_tokens=False
+        )
+        negative_ids = model.tokenizer.encode(
+            negative_prompt, add_special_tokens=False
+        )
+        if len(positive_ids) != len(negative_ids):
+            raise ValueError(
+                f"Paired prompts are not token-aligned for {row.get('id', '<unknown>')}."
+            )
+        for response_field in response_fields:
+            response = row[response_field]
+            clean = positive_prompt + response
+            corrupt = negative_prompt + response
+            clean_ids = model.tokenizer.encode(clean, add_special_tokens=False)
+            corrupt_ids = model.tokenizer.encode(corrupt, add_special_tokens=False)
+            if len(clean_ids) != len(corrupt_ids):
+                raise ValueError("Paired transcripts are not token-aligned.")
+            if clean_ids[len(positive_ids) :] != corrupt_ids[len(negative_ids) :]:
+                raise ValueError(
+                    "Response tokens differ across paired prompt conditions."
+                )
+            if max_length is not None and len(clean_ids) > int(max_length):
+                raise ValueError("Response objectives cannot truncate transcripts.")
+            output.append((clean, corrupt, len(positive_ids)))
     return output
 
 
@@ -539,7 +589,45 @@ def _load_vector(config: dict, model):
     return direction, raw, metadata
 
 
-def _write_circuits(graph, config: dict, metadata: dict) -> list[str]:
+def _negative_centroid_coordinates(
+    config: dict,
+    model,
+    direction: torch.Tensor,
+) -> torch.Tensor:
+    """Load stored anti-trait means and project them onto one unit direction."""
+
+    filename = config["eapig"].get("negative_mean_file")
+    if not filename:
+        raise ValueError(
+            "negative_centroid_clamp requires eapig.negative_mean_file."
+        )
+    path = Path(filename)
+    if not path.is_absolute():
+        path = _path(config["vector"]["output_dir"]) / path
+    means = torch.load(path, map_location="cpu", weights_only=True).float()
+    unit = direction.detach().float().cpu()
+    unit = unit / unit.norm().clamp_min(1e-8)
+    if means.ndim != 2 or means.shape[1] != unit.numel():
+        raise ValueError(
+            "Stored negative means must have shape [layer, hidden_size]."
+        )
+    if means.shape[0] < model.cfg.n_layers:
+        raise ValueError(
+            "Stored negative means do not cover every model layer."
+        )
+    coordinates = means[: model.cfg.n_layers] @ unit
+    if not torch.isfinite(coordinates).all():
+        raise ValueError("Stored negative-centroid coordinates are non-finite.")
+    return coordinates
+
+
+def _write_circuits(
+    graph,
+    config: dict,
+    metadata: dict,
+    *,
+    target: dict | None = None,
+) -> list[str]:
     from .graph import edge_record, paper_greedy_edges
 
     output = _path(config["eapig"]["output_dir"]) / "circuits"
@@ -560,7 +648,7 @@ def _write_circuits(graph, config: dict, metadata: dict) -> list[str]:
                 "corruption": config["eapig"]["corruption"],
                 "requested_k": int(k),
                 "retained_edges": len(selected),
-                "target": {
+                "target": target or {
                     key: metadata[key]
                     for key in ("vector_type", "layer", "position", "target_hook")
                 },
@@ -576,10 +664,14 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
     from .eapig import (
         AttributionConfig,
         attribute,
+        attribute_contrastive_prompt_projection,
+        attribute_logit_metric,
+        attribute_paired_coordinate_projection,
         attribute_response_average,
         attribute_steering_response_logprob,
     )
     from .graph import (
+        make_logit_graph,
         make_projection_graph,
         make_steering_to_logits_graph,
         write_edge_scores_parquet,
@@ -600,6 +692,7 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
     )
     corruption = run["corruption"]
     diagnostics = None
+    circuit_target = None
     if corruption == "projection":
         graph = make_projection_graph(model, layer)
         if vector["vector_type"] == "pre_answer":
@@ -628,7 +721,7 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
                 integrated_gradients=True,
             )
         else:
-            attribute_response_average(
+            diagnostics = attribute_response_average(
                 model,
                 graph,
                 _transcripts(model, run["dataset"], run.get("max_length", 512)),
@@ -646,7 +739,7 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
         if coefficient >= 0:
             raise ValueError("Upstream steering corruption coefficient must be negative.")
         graph = make_projection_graph(model, layer)
-        attribute_response_average(
+        diagnostics = attribute_response_average(
             model,
             graph,
             _transcripts(model, run["dataset"], run.get("max_length", 512)),
@@ -658,6 +751,190 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
             corruption="upstream_steering",
             corrupt_coefficient=coefficient,
         )
+    elif corruption == "negative_centroid_clamp":
+        if vector["vector_type"] != "response_average":
+            raise ValueError(
+                "negative_centroid_clamp requires a response_average vector."
+            )
+        graph = make_projection_graph(model, layer)
+        negative_coordinates = _negative_centroid_coordinates(
+            config, model, direction
+        )
+        diagnostics = attribute_response_average(
+            model,
+            graph,
+            _transcripts(model, run["dataset"], run.get("max_length", 512)),
+            direction=direction,
+            target_hook=vector["target_hook"],
+            config=attribution,
+            integrated_gradients=True,
+            corruption="negative_centroid_clamp",
+            negative_coordinates=negative_coordinates,
+        )
+        diagnostics["target_negative_coordinate"] = float(
+            negative_coordinates[layer].item()
+        )
+        diagnostics["negative_mean_file"] = str(run["negative_mean_file"])
+        if diagnostics["clean_minus_corrupt_projection"] <= 0:
+            raise RuntimeError(
+                "Negative-centroid clamping did not reduce the generation-vector "
+                "projection."
+            )
+    elif corruption == "contrastive_prompts":
+        if vector["vector_type"] not in {"paired_prompt", "response_average"}:
+            raise ValueError(
+                "contrastive_prompts requires a paired_prompt or "
+                "response_average vector."
+            )
+        graph = make_projection_graph(model, layer)
+        target_scope = run.get(
+            "target_scope",
+            (
+                "single_position"
+                if vector["vector_type"] == "paired_prompt"
+                else "response_prefix"
+            ),
+        )
+        if vector["vector_type"] == "paired_prompt":
+            _, positive_prompts, negative_prompts = _paired_system_prompts(
+                model, run["dataset"]
+            )
+            prompt_pairs = list(zip(positive_prompts, negative_prompts, strict=True))
+            target_position = (
+                int(vector["position"])
+                if target_scope == "single_position"
+                else None
+            )
+        else:
+            prompt_pairs = _paired_response_transcripts(
+                model, run["dataset"], run.get("max_length", 512)
+            )
+            target_position = None
+        diagnostics = attribute_contrastive_prompt_projection(
+            model,
+            graph,
+            prompt_pairs,
+            direction=direction,
+            target_hook=vector["target_hook"],
+            target_position=target_position,
+            target_scope=target_scope,
+            config=attribution,
+        )
+        if diagnostics["clean_minus_corrupt_projection"] <= 0:
+            raise RuntimeError(
+                "Positive prompts did not increase the generation-vector projection."
+            )
+        circuit_target = {
+            "vector_type": vector["vector_type"],
+            "layer": layer,
+            "position": target_position,
+            "target_hook": vector["target_hook"],
+            "target_scope": target_scope,
+        }
+    elif corruption == "paired_coordinate_projection":
+        if vector["vector_type"] not in {"paired_prompt", "response_average"}:
+            raise ValueError(
+                "paired_coordinate_projection requires a paired_prompt or "
+                "response_average vector."
+            )
+        graph = make_projection_graph(model, layer)
+        if vector["vector_type"] == "paired_prompt":
+            _, positive_prompts, negative_prompts = _paired_system_prompts(
+                model, run["dataset"]
+            )
+            prompt_pairs = list(
+                zip(positive_prompts, negative_prompts, strict=True)
+            )
+            target_scope = "single_position"
+            target_position = int(vector["position"])
+        else:
+            prompt_pairs = _paired_response_transcripts(
+                model, run["dataset"], run.get("max_length", 512)
+            )
+            target_scope = "response_prefix"
+            target_position = None
+        diagnostics = attribute_paired_coordinate_projection(
+            model,
+            graph,
+            prompt_pairs,
+            direction=direction,
+            target_hook=vector["target_hook"],
+            target_position=target_position,
+            target_scope=target_scope,
+            config=attribution,
+        )
+        if diagnostics["clean_minus_corrupt_projection"] <= 0:
+            raise RuntimeError(
+                "Paired-coordinate corruption did not reduce the vector target."
+            )
+        circuit_target = {
+            "vector_type": vector["vector_type"],
+            "layer": layer,
+            "position": target_position,
+            "target_hook": vector["target_hook"],
+            "target_scope": target_scope,
+            "source_corruption_scope": (
+                "all_prompt_tokens"
+                if vector["vector_type"] == "paired_prompt"
+                else "response_prefix"
+            ),
+        }
+    elif corruption == "target_projection_to_logits":
+        if vector["vector_type"] != "pre_answer":
+            raise ValueError(
+                "target_projection_to_logits requires a pre_answer vector."
+            )
+        refusal_token_ids = [int(value) for value in run["refusal_token_ids"]]
+        graph = make_steering_to_logits_graph(model, layer)
+        diagnostics = attribute_logit_metric(
+            model,
+            graph,
+            _prompts(model, run["dataset"]),
+            direction=direction,
+            refusal_token_ids=refusal_token_ids,
+            config=attribution,
+            integrated_gradients=True,
+            target_hook=vector["target_hook"],
+            target_position=int(vector["position"]),
+        )
+        if diagnostics["clean_minus_corrupt"] <= 0:
+            raise RuntimeError(
+                "Target-only projection did not reduce refusal log-odds."
+            )
+        circuit_target = {
+            "vector_type": vector["vector_type"],
+            "source_layer": layer,
+            "source_position": int(vector["position"]),
+            "source_hook": vector["target_hook"],
+            "metric": "next_token_refusal_log_odds",
+            "refusal_token_ids": refusal_token_ids,
+        }
+    elif corruption == "global_projection_to_logits":
+        if vector["vector_type"] != "pre_answer":
+            raise ValueError(
+                "global_projection_to_logits requires a pre_answer vector."
+            )
+        refusal_token_ids = [int(value) for value in run["refusal_token_ids"]]
+        graph = make_logit_graph(model)
+        diagnostics = attribute_logit_metric(
+            model,
+            graph,
+            _prompts(model, run["dataset"]),
+            direction=direction,
+            refusal_token_ids=refusal_token_ids,
+            config=attribution,
+            integrated_gradients=True,
+        )
+        if diagnostics["clean_minus_corrupt"] <= 0:
+            raise RuntimeError(
+                "Global projection did not reduce refusal log-odds."
+            )
+        circuit_target = {
+            "vector_type": vector["vector_type"],
+            "corruption_scope": "all_layers_all_prompt_positions",
+            "metric": "next_token_refusal_log_odds",
+            "refusal_token_ids": refusal_token_ids,
+        }
     elif corruption == "steering":
         graph = make_steering_to_logits_graph(model, layer)
         coefficient = float(run["coefficient"])
@@ -676,7 +953,10 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
             raise RuntimeError("Negative steering did not reduce the response metric.")
     else:
         raise ValueError(
-            "eapig.corruption must be projection, upstream_steering, or steering."
+            "eapig.corruption must be projection, upstream_steering, "
+            "negative_centroid_clamp, contrastive_prompts, "
+            "paired_coordinate_projection, target_projection_to_logits, "
+            "global_projection_to_logits, or steering."
         )
     output.mkdir(parents=True, exist_ok=True)
     scores = output / "edge_scores.parquet"
@@ -687,7 +967,9 @@ def run_eapig(config: dict, *, overwrite: bool = False) -> dict:
         "vector_type": vector["vector_type"],
         "corruption": corruption,
         "edge_scores": str(scores),
-        "circuits": _write_circuits(graph, config, vector),
+        "circuits": _write_circuits(
+            graph, config, vector, target=circuit_target
+        ),
         "diagnostics": diagnostics,
     }
     write_json(metadata_path, result)
@@ -716,6 +998,7 @@ def run_tests(config: dict) -> dict:
     """Evaluate one saved circuit with its matching corruption and vector target."""
     from .graph import (
         load_circuit_edge_names,
+        make_logit_graph,
         make_projection_graph,
         make_steering_to_logits_graph,
         set_selected_edges,
@@ -725,8 +1008,95 @@ def run_tests(config: dict) -> dict:
     model = _model(config, hook_mode="eap")
     direction, raw, vector = _load_vector(config, model)
     layer = int(vector["layer"])
-    if config["eapig"]["corruption"] in {"projection", "upstream_steering"}:
+    if config["eapig"]["corruption"] in {
+        "projection",
+        "upstream_steering",
+        "negative_centroid_clamp",
+        "contrastive_prompts",
+        "paired_coordinate_projection",
+    }:
         graph = make_projection_graph(model, layer)
+    elif config["eapig"]["corruption"] == "target_projection_to_logits":
+        from .circuit import _mixed_forward
+        from .interventions import direction_ablation_hook
+        from .metrics import refusal_log_odds
+        from .model import tokenize_prompts
+
+        refusal_token_ids = [
+            int(value) for value in config["eapig"]["refusal_token_ids"]
+        ]
+        target_hook = str(vector["target_hook"])
+        target_position = int(vector["position"])
+        corrupt_hooks = [
+            (
+                target_hook,
+                direction_ablation_hook(
+                    direction, position=target_position
+                ),
+            )
+        ]
+
+        def source_transform(name, activations):
+            if name != target_hook:
+                return activations
+            return direction_ablation_hook(
+                direction, position=target_position
+            )(activations, None)
+
+        values = {
+            name: []
+            for name in ("clean", "corrupt", "circuit_only", "circuit_ablated")
+        }
+        for prompt in _prompts(model, test["dataset"]):
+            tokens, mask = tokenize_prompts(
+                model, [prompt], max_length=test.get("max_length", 512)
+            )
+            with torch.inference_mode():
+                clean_logits = model(tokens, attention_mask=mask)
+            with torch.inference_mode(), model.hooks(fwd_hooks=corrupt_hooks):
+                corrupt_logits = model(tokens, attention_mask=mask)
+            circuit_only = _mixed_forward(
+                model,
+                graph,
+                tokens,
+                mask,
+                target_hook=target_hook,
+                target_position=target_position,
+                direction=direction,
+                patch_selected=False,
+                corrupt_fwd_hooks=corrupt_hooks,
+                corrupt_cache_transform=source_transform,
+                cache_dtype=torch.bfloat16,
+            )[1]
+            circuit_ablated = _mixed_forward(
+                model,
+                graph,
+                tokens,
+                mask,
+                target_hook=target_hook,
+                target_position=target_position,
+                direction=direction,
+                patch_selected=True,
+                corrupt_fwd_hooks=corrupt_hooks,
+                corrupt_cache_transform=source_transform,
+                cache_dtype=torch.bfloat16,
+            )[1]
+            logits = {
+                "clean": clean_logits,
+                "corrupt": corrupt_logits,
+                "circuit_only": circuit_only,
+                "circuit_ablated": circuit_ablated,
+            }
+            for name, output_logits in logits.items():
+                values[name].append(
+                    refusal_log_odds(
+                        output_logits, refusal_token_ids
+                    ).detach().float().cpu()
+                )
+        values = {name: torch.cat(items) for name, items in values.items()}
+        behavior = None
+    elif config["eapig"]["corruption"] == "global_projection_to_logits":
+        graph = make_logit_graph(model)
     else:
         graph = make_steering_to_logits_graph(model, layer)
     circuit_path = _path(test["circuit_path"])
@@ -735,7 +1105,275 @@ def run_tests(config: dict) -> dict:
         raise ValueError("Circuit and test corruption types differ.")
     set_selected_edges(graph, load_circuit_edge_names(circuit_path))
 
-    if (
+    if config["eapig"]["corruption"] == "contrastive_prompts":
+        from .circuit import _normal_forward, mixed_forward_from_prompt_pair
+        from .eapig import _response_mask, response_state_mask
+        from .model import tokenize_prompts
+
+        target_scope = config["eapig"].get(
+            "target_scope",
+            (
+                "single_position"
+                if vector["vector_type"] == "paired_prompt"
+                else "response_prefix"
+            ),
+        )
+        if vector["vector_type"] == "paired_prompt":
+            _, positive_prompts, negative_prompts = _paired_system_prompts(
+                model, test["dataset"]
+            )
+            pairs = list(zip(positive_prompts, negative_prompts, strict=True))
+            target_position = (
+                int(vector["position"])
+                if target_scope == "single_position"
+                else -1
+            )
+        else:
+            pairs = _paired_response_transcripts(
+                model, test["dataset"], test.get("max_length", 512)
+            )
+            target_position = -1
+
+        values = {
+            name: []
+            for name in ("clean", "corrupt", "circuit_only", "circuit_ablated")
+        }
+        for pair in pairs:
+            clean_text, corrupt_text = pair[:2]
+            clean_tokens, clean_mask = tokenize_prompts(
+                model, [clean_text], max_length=test.get("max_length", 512)
+            )
+            corrupt_tokens, corrupt_mask = tokenize_prompts(
+                model, [corrupt_text], max_length=test.get("max_length", 512)
+            )
+            if target_scope == "all_prompt_tokens":
+                target_mask = clean_mask.bool()
+            elif target_scope in {"response_prefix", "all_response_tokens"}:
+                response_mask = _response_mask(
+                    clean_tokens, clean_mask, [int(pair[2])]
+                )
+                target_mask = response_state_mask(
+                    response_mask,
+                    include_terminal=target_scope == "all_response_tokens",
+                )
+            else:
+                target_mask = None
+            runs = {
+                "clean": _normal_forward(
+                    model,
+                    clean_tokens,
+                    clean_mask,
+                    target_hook=vector["target_hook"],
+                    target_position=target_position,
+                    direction=direction,
+                    target_mask=target_mask,
+                ),
+                "corrupt": _normal_forward(
+                    model,
+                    corrupt_tokens,
+                    corrupt_mask,
+                    target_hook=vector["target_hook"],
+                    target_position=target_position,
+                    direction=direction,
+                    target_mask=target_mask,
+                ),
+                "circuit_only": mixed_forward_from_prompt_pair(
+                    model,
+                    graph,
+                    clean_tokens,
+                    clean_mask,
+                    corrupt_tokens,
+                    corrupt_mask,
+                    target_hook=vector["target_hook"],
+                    target_position=target_position,
+                    direction=direction,
+                    patch_selected=False,
+                    target_mask=target_mask,
+                    cache_dtype=torch.bfloat16,
+                ),
+                "circuit_ablated": mixed_forward_from_prompt_pair(
+                    model,
+                    graph,
+                    clean_tokens,
+                    clean_mask,
+                    corrupt_tokens,
+                    corrupt_mask,
+                    target_hook=vector["target_hook"],
+                    target_position=target_position,
+                    direction=direction,
+                    patch_selected=True,
+                    target_mask=target_mask,
+                    cache_dtype=torch.bfloat16,
+                ),
+            }
+            for name, (projection, _logits) in runs.items():
+                values[name].append(projection.cpu())
+        values = {name: torch.cat(items) for name, items in values.items()}
+        behavior = None
+    elif config["eapig"]["corruption"] == "paired_coordinate_projection":
+        from .circuit import _mixed_forward, _normal_forward
+        from .eapig import (
+            _paired_coordinate_intervention_hooks,
+            _paired_source_coordinate_capture_hooks,
+            _response_mask,
+            response_state_mask,
+        )
+        from .interventions import paired_coordinate_source_transform
+        from .model import tokenize_prompts
+
+        vector_type = vector["vector_type"]
+        if vector_type == "paired_prompt":
+            _, positive_prompts, negative_prompts = _paired_system_prompts(
+                model, test["dataset"]
+            )
+            pairs = list(
+                zip(positive_prompts, negative_prompts, strict=True)
+            )
+            target_position = int(vector["position"])
+        elif vector_type == "response_average":
+            pairs = _paired_response_transcripts(
+                model, test["dataset"], test.get("max_length", 512)
+            )
+            target_position = -1
+        else:
+            raise ValueError(
+                "Paired-coordinate circuit evaluation requires a paired_prompt "
+                "or response_average vector."
+            )
+        values = {
+            name: []
+            for name in ("clean", "corrupt", "circuit_only", "circuit_ablated")
+        }
+        target_hook = vector["target_hook"]
+        for pair in pairs:
+            clean_text, reference_text = pair[:2]
+            clean_tokens, clean_mask = tokenize_prompts(
+                model, [clean_text], max_length=test.get("max_length", 512)
+            )
+            reference_tokens, reference_mask = tokenize_prompts(
+                model,
+                [reference_text],
+                max_length=test.get("max_length", 512),
+            )
+            if tuple(clean_tokens.shape) != tuple(reference_tokens.shape):
+                raise ValueError(
+                    "Positive and negative references must tokenize to the same shape."
+                )
+            if not torch.equal(clean_mask, reference_mask):
+                raise ValueError(
+                    "Positive and negative attention masks must match."
+                )
+
+            if vector_type == "paired_prompt":
+                source_mask = clean_mask.bool()
+                target_mask = None
+            else:
+                response_mask = _response_mask(
+                    clean_tokens, clean_mask, [int(pair[2])]
+                )
+                source_mask = response_state_mask(
+                    response_mask, include_terminal=False
+                )
+                target_mask = source_mask
+            source_coordinates: dict[str, torch.Tensor] = {}
+            target_coordinates: dict[str, torch.Tensor] = {}
+
+            def capture_target(activations: torch.Tensor, hook):
+                del hook
+                unit = direction.to(
+                    device=activations.device,
+                    dtype=activations.dtype,
+                )
+                unit = unit / unit.norm().clamp_min(1e-8)
+                target_coordinates["value"] = torch.einsum(
+                    "bpd,d->bp", activations, unit
+                ).detach().float()
+                return activations
+
+            reference_hooks = [
+                *_paired_source_coordinate_capture_hooks(
+                    graph, direction, source_coordinates
+                ),
+                (target_hook, capture_target),
+            ]
+            with torch.inference_mode(), model.hooks(
+                fwd_hooks=reference_hooks
+            ):
+                model(reference_tokens, attention_mask=reference_mask)
+            if "value" not in target_coordinates:
+                raise RuntimeError(
+                    "Paired target-coordinate hook did not fire."
+                )
+
+            source_transform = paired_coordinate_source_transform(
+                direction,
+                target_coordinates=source_coordinates,
+                mask=source_mask,
+            )
+            corrupt_hooks = _paired_coordinate_intervention_hooks(
+                graph,
+                direction,
+                source_coordinates,
+                source_mask=source_mask,
+                target_hook=target_hook,
+                target_coordinates=target_coordinates["value"],
+                target_mask=source_mask,
+                strength=1.0,
+            )
+            runs = {
+                "clean": _normal_forward(
+                    model,
+                    clean_tokens,
+                    clean_mask,
+                    target_hook=target_hook,
+                    target_position=target_position,
+                    direction=direction,
+                    target_mask=target_mask,
+                ),
+                "corrupt": _normal_forward(
+                    model,
+                    clean_tokens,
+                    clean_mask,
+                    target_hook=target_hook,
+                    target_position=target_position,
+                    direction=direction,
+                    fwd_hooks=corrupt_hooks,
+                    target_mask=target_mask,
+                ),
+                "circuit_only": _mixed_forward(
+                    model,
+                    graph,
+                    clean_tokens,
+                    clean_mask,
+                    target_hook=target_hook,
+                    target_position=target_position,
+                    direction=direction,
+                    patch_selected=False,
+                    target_mask=target_mask,
+                    corrupt_fwd_hooks=corrupt_hooks,
+                    corrupt_cache_transform=source_transform,
+                    cache_dtype=torch.bfloat16,
+                ),
+                "circuit_ablated": _mixed_forward(
+                    model,
+                    graph,
+                    clean_tokens,
+                    clean_mask,
+                    target_hook=target_hook,
+                    target_position=target_position,
+                    direction=direction,
+                    patch_selected=True,
+                    target_mask=target_mask,
+                    corrupt_fwd_hooks=corrupt_hooks,
+                    corrupt_cache_transform=source_transform,
+                    cache_dtype=torch.bfloat16,
+                ),
+            }
+            for name, (projection, _logits) in runs.items():
+                values[name].append(projection.cpu())
+        values = {name: torch.cat(items) for name, items in values.items()}
+        behavior = None
+    elif (
         config["eapig"]["corruption"] == "projection"
         and vector["vector_type"] in {"pre_answer", "paired_prompt"}
     ):
@@ -783,12 +1421,15 @@ def run_tests(config: dict) -> dict:
     elif config["eapig"]["corruption"] in {
         "projection",
         "upstream_steering",
+        "negative_centroid_clamp",
     }:
         from .circuit import _mixed_forward, _normal_forward
         from .eapig import _response_mask, response_logprob_values
         from .interventions import (
             all_layer_ablation_hooks,
+            all_layer_coordinate_clamp_hooks,
             all_layer_steering_hooks,
+            coordinate_clamp_source_transform,
             steering_source_transform,
         )
         from .model import tokenize_prompts
@@ -797,7 +1438,8 @@ def run_tests(config: dict) -> dict:
         if corruption == "projection":
             corrupt_hooks = all_layer_ablation_hooks(model, direction)
             mixed_kwargs = {}
-        else:
+            negative_coordinates = None
+        elif corruption == "upstream_steering":
             coefficient = float(config["eapig"]["coefficient"])
             if coefficient >= 0:
                 raise ValueError(
@@ -815,6 +1457,13 @@ def run_tests(config: dict) -> dict:
                     coefficient=coefficient,
                 ),
             }
+            negative_coordinates = None
+        else:
+            corrupt_hooks = None
+            mixed_kwargs = None
+            negative_coordinates = _negative_centroid_coordinates(
+                config, model, direction
+            )
 
         values = {name: [] for name in ("clean", "corrupt", "circuit_only", "circuit_ablated")}
         behavior_values = {name: [] for name in values}
@@ -823,6 +1472,27 @@ def run_tests(config: dict) -> dict:
         ):
             tokens, mask = tokenize_prompts(model, [text], max_length=test.get("max_length", 512))
             response_mask = _response_mask(tokens, mask, [start])
+            if corruption == "negative_centroid_clamp":
+                current_corrupt_hooks = all_layer_coordinate_clamp_hooks(
+                    model,
+                    direction,
+                    target_coordinates=negative_coordinates,
+                    mask=response_mask,
+                )
+                current_mixed_kwargs = {
+                    "corrupt_fwd_hooks": current_corrupt_hooks,
+                    "corrupt_cache_transform": coordinate_clamp_source_transform(
+                        direction,
+                        target_coordinate=float(
+                            negative_coordinates[0].item()
+                        ),
+                        mask=response_mask,
+                        input_source_name=graph.nodes["input"].out_hook,
+                    ),
+                }
+            else:
+                current_corrupt_hooks = corrupt_hooks
+                current_mixed_kwargs = mixed_kwargs
             runs = {
                 "clean": _normal_forward(
                     model, tokens, mask, target_hook=vector["target_hook"],
@@ -831,18 +1501,18 @@ def run_tests(config: dict) -> dict:
                 "corrupt": _normal_forward(
                     model, tokens, mask, target_hook=vector["target_hook"],
                     target_position=-1, direction=direction,
-                    fwd_hooks=corrupt_hooks,
+                    fwd_hooks=current_corrupt_hooks,
                     target_mask=response_mask
                 ),
                 "circuit_only": _mixed_forward(
                     model, graph, tokens, mask, target_hook=vector["target_hook"],
                     target_position=-1, direction=direction, patch_selected=False,
-                    target_mask=response_mask, **mixed_kwargs
+                    target_mask=response_mask, **current_mixed_kwargs
                 ),
                 "circuit_ablated": _mixed_forward(
                     model, graph, tokens, mask, target_hook=vector["target_hook"],
                     target_position=-1, direction=direction, patch_selected=True,
-                    target_mask=response_mask, **mixed_kwargs
+                    target_mask=response_mask, **current_mixed_kwargs
                 ),
             }
             for name, (projection, logits) in runs.items():
@@ -854,6 +1524,65 @@ def run_tests(config: dict) -> dict:
         behavior = _metric_summary(
             {name: torch.cat(items) for name, items in behavior_values.items()}
         )
+    elif config["eapig"]["corruption"] == "global_projection_to_logits":
+        from .circuit import _mixed_forward
+        from .interventions import all_layer_ablation_hooks
+        from .metrics import refusal_log_odds
+        from .model import tokenize_prompts
+
+        refusal_token_ids = [
+            int(value) for value in config["eapig"]["refusal_token_ids"]
+        ]
+        values = {
+            name: []
+            for name in ("clean", "corrupt", "circuit_only", "circuit_ablated")
+        }
+        for prompt in _prompts(model, test["dataset"]):
+            tokens, mask = tokenize_prompts(
+                model, [prompt], max_length=test.get("max_length", 512)
+            )
+            with torch.inference_mode():
+                clean_logits = model(tokens, attention_mask=mask)
+            with torch.inference_mode(), model.hooks(
+                fwd_hooks=all_layer_ablation_hooks(model, direction)
+            ):
+                corrupt_logits = model(tokens, attention_mask=mask)
+            circuit_only = _mixed_forward(
+                model,
+                graph,
+                tokens,
+                mask,
+                target_hook=vector["target_hook"],
+                target_position=int(vector["position"]),
+                direction=direction,
+                patch_selected=False,
+                cache_dtype=torch.bfloat16,
+            )[1]
+            circuit_ablated = _mixed_forward(
+                model,
+                graph,
+                tokens,
+                mask,
+                target_hook=vector["target_hook"],
+                target_position=int(vector["position"]),
+                direction=direction,
+                patch_selected=True,
+                cache_dtype=torch.bfloat16,
+            )[1]
+            logits = {
+                "clean": clean_logits,
+                "corrupt": corrupt_logits,
+                "circuit_only": circuit_only,
+                "circuit_ablated": circuit_ablated,
+            }
+            for name, output_logits in logits.items():
+                values[name].append(
+                    refusal_log_odds(
+                        output_logits, refusal_token_ids
+                    ).detach().float().cpu()
+                )
+        values = {name: torch.cat(items) for name, items in values.items()}
+        behavior = None
     else:
         from .circuit import mixed_logits_with_intervention
         from .eapig import _response_mask, response_logprob_values, response_prediction_mask

@@ -32,7 +32,7 @@ DEFAULT_MINUS2_ROOT = (
 )
 DEFAULT_LEGACY_ROOT = (
     ROOT
-    / "old_results/qwen2.5-7b-instruct/persona/sycophantic/vector"
+    / "results/qwen2.5-7b-instruct/sycophancy/generation/vector"
 )
 DEFAULT_SCREEN = (
     ROOT

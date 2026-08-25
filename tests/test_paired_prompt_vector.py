@@ -12,6 +12,7 @@ import torch
 from refusal_circuit.model import format_system_instruction
 from refusal_circuit.workflow import (
     _load_vector,
+    _paired_response_transcripts,
     _paired_system_prompts,
     _transcripts,
     extract_vector,
@@ -242,6 +243,41 @@ class PairedPromptVectorTests(unittest.TestCase):
             "|user=Shared question|assistant="
         )
         self.assertEqual(transcripts, [(prompt + "Certainly.", len(prompt))])
+
+    def test_builds_both_shared_response_trajectories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rows.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "prompt": "Shared question",
+                        "positive_system_instruction": "Agree",
+                        "negative_system_instruction": "Check",
+                        "sycophantic_answer": "Certainly.",
+                        "normal_answer": "It depends.",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            tokenizer = FakeTokenizer()
+            tokenizer.encode = lambda text, add_special_tokens: list(text)
+            model = SimpleNamespace(tokenizer=tokenizer)
+            transcripts = _paired_response_transcripts(
+                model,
+                {
+                    "path": str(path),
+                    "response_fields": [
+                        "sycophantic_answer",
+                        "normal_answer",
+                    ],
+                },
+            )
+
+        self.assertEqual(len(transcripts), 2)
+        self.assertTrue(transcripts[0][0].endswith("Certainly."))
+        self.assertTrue(transcripts[1][0].endswith("It depends."))
+        self.assertEqual(transcripts[0][2], transcripts[1][2])
 
     def test_loads_existing_persona_generation_vector_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:

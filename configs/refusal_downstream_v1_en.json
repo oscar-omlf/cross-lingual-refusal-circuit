@@ -1,0 +1,58 @@
+{
+  "trait": "refusal",
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "dtype": "bfloat16",
+    "hook_mode": "standard"
+  },
+  "vector": {
+    "type": "pre_answer",
+    "selection": "fixed",
+    "layer": 15,
+    "position": -2,
+    "train": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/refusal/vector_extraction.jsonl",
+      "positive_label": "harmful",
+      "negative_label": "harmless"
+    },
+    "batch_size": 4,
+    "max_length": 512,
+    "output_dir": "results/qwen2.5-7b-instruct/refusal/final_v1/en/vector"
+  },
+  "eapig": {
+    "corruption": "target_projection_to_logits",
+    "refusal_token_ids": [
+      40,
+      2121
+    ],
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/refusal/eapig.jsonl",
+      "label": "harmful",
+      "num_examples": 64
+    },
+    "batch_size": 1,
+    "max_length": 512,
+    "ig_steps": 5,
+    "prune_parentless": true,
+    "k_values": [
+      100,
+      500,
+      1000,
+      3000
+    ],
+    "output_dir": "results/qwen2.5-7b-instruct/refusal/downstream_v1/en/eapig"
+  },
+  "tests": {
+    "dataset": {
+      "path": "data/processed/qwen2.5-7b-instruct/trait_circuits/refusal/circuit_selection.jsonl",
+      "label": "harmful",
+      "num_examples": 64
+    },
+    "circuit_path": "results/qwen2.5-7b-instruct/refusal/downstream_v1/en/eapig/circuits/eapig_top_100.json",
+    "batch_size": 1,
+    "max_length": 512,
+    "behavior": false,
+    "output_path": "results/qwen2.5-7b-instruct/refusal/downstream_v1/en/faithfulness/k100.json"
+  }
+}

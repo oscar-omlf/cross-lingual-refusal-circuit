@@ -64,18 +64,184 @@ def direction_coordinate_clamp_hook(
     direction: torch.Tensor,
     *,
     target_coordinate: float,
+    strength: float = 1.0,
     position: int | None = None,
+    mask: torch.Tensor | None = None,
 ) -> Callable:
-    """Clamp a direction coordinate to a fixed affine reference value."""
+    """Move a direction coordinate toward a fixed affine reference value."""
+
+    if position is not None and mask is not None:
+        raise ValueError("Specify either position or mask, not both.")
 
     def hook(activations: torch.Tensor, hook) -> torch.Tensor:
         vector = normalized(direction, activations)
         selected = _selected_positions(activations, position)
         coordinate = torch.einsum("...d,d->...", selected, vector)
         replacement = selected + (
-            float(target_coordinate) - coordinate
+            float(strength) * (float(target_coordinate) - coordinate)
         ).unsqueeze(-1) * vector
+        if mask is not None:
+            if tuple(mask.shape) != tuple(activations.shape[:2]):
+                raise ValueError(
+                    f"clamp mask {tuple(mask.shape)} does not match activations "
+                    f"{tuple(activations.shape[:2])}"
+                )
+            selected_mask = mask.to(
+                device=activations.device, dtype=torch.bool
+            ).reshape(
+                *mask.shape,
+                *((1,) * (activations.ndim - mask.ndim)),
+            )
+            return torch.where(selected_mask, replacement, activations)
         return _replace_selected_positions(activations, replacement, position)
+
+    return hook
+
+
+def direction_tensor_coordinate_clamp_hook(
+    direction: torch.Tensor,
+    *,
+    target_coordinates: torch.Tensor,
+    mask: torch.Tensor,
+    strength: float = 1.0,
+) -> Callable:
+    """Move selected states toward per-example, per-position coordinates."""
+
+    def hook(activations: torch.Tensor, hook) -> torch.Tensor:
+        del hook
+        vector = normalized(direction, activations)
+        coordinate = torch.einsum("...d,d->...", activations, vector)
+        target = target_coordinates.to(
+            device=activations.device,
+            dtype=coordinate.dtype,
+        )
+        if tuple(target.shape) != tuple(coordinate.shape):
+            raise ValueError(
+                f"target coordinates {tuple(target.shape)} do not match "
+                f"activation coordinates {tuple(coordinate.shape)}"
+            )
+        selected = mask.to(device=activations.device, dtype=torch.bool)
+        while selected.ndim < coordinate.ndim:
+            selected = selected.unsqueeze(-1)
+        replacement = activations + (
+            float(strength) * (target - coordinate)
+        ).unsqueeze(-1) * vector
+        return torch.where(selected.unsqueeze(-1), replacement, activations)
+
+    return hook
+
+
+def paired_coordinate_source_transform(
+    direction: torch.Tensor,
+    *,
+    target_coordinates: dict[str, torch.Tensor],
+    mask: torch.Tensor,
+):
+    """Return the EAP source transform for matched negative coordinates.
+
+    Direct residual/MLP sources use ``[batch, position]`` targets. Attention
+    sources use one target per effective head, with shape
+    ``[batch, position, head]``. Only the selected direction changes.
+    """
+
+    def transform(source_name: str, activations: torch.Tensor) -> torch.Tensor:
+        if source_name not in target_coordinates:
+            raise KeyError(
+                f"Missing paired coordinate target for EAP source {source_name}."
+            )
+        return direction_tensor_coordinate_clamp_hook(
+            direction,
+            target_coordinates=target_coordinates[source_name],
+            mask=mask,
+        )(activations, None)
+
+    return transform
+
+
+def state_component_replacement(
+    source: torch.Tensor,
+    target: torch.Tensor,
+    direction: torch.Tensor,
+    *,
+    component: str,
+) -> torch.Tensor:
+    """Move ``source`` toward ``target`` in one residual-state subspace.
+
+    ``directional`` changes only the coordinate parallel to ``direction``;
+    ``orthogonal`` changes only the complementary state; and ``full`` replaces
+    the complete state. The leading dimensions may represent any collection of
+    batches or token positions, but ``source`` and ``target`` must align
+    exactly.
+    """
+
+    if tuple(source.shape) != tuple(target.shape):
+        raise ValueError("source and target states must have identical shape")
+    if source.ndim < 1:
+        raise ValueError("source and target states must have a hidden dimension")
+    if component not in {"directional", "orthogonal", "full"}:
+        raise ValueError(
+            "component must be 'directional', 'orthogonal', or 'full'"
+        )
+    if component == "full":
+        return target.to(device=source.device, dtype=source.dtype)
+
+    vector = normalized(direction, source)
+    if vector.ndim != 1 or vector.numel() != source.shape[-1]:
+        raise ValueError("direction shape does not match the hidden dimension")
+    delta = target.to(device=source.device, dtype=source.dtype) - source
+    parallel = (
+        torch.einsum("...d,d->...", delta, vector).unsqueeze(-1) * vector
+    )
+    return source + (parallel if component == "directional" else delta - parallel)
+
+
+def normalized_direction_shift(
+    source: torch.Tensor,
+    direction: torch.Tensor,
+    *,
+    coordinate_gap: float,
+    alpha: float,
+    sign: float,
+) -> torch.Tensor:
+    """Shift states by ``sign * alpha`` natural coordinate-gap units."""
+
+    if not torch.isfinite(torch.tensor(float(coordinate_gap))):
+        raise ValueError("coordinate_gap must be finite")
+    if not torch.isfinite(torch.tensor(float(alpha))):
+        raise ValueError("alpha must be finite")
+    if sign not in {-1.0, 1.0}:
+        raise ValueError("sign must be -1.0 or 1.0")
+    vector = normalized(direction, source)
+    if vector.ndim != 1 or vector.numel() != source.shape[-1]:
+        raise ValueError("direction shape does not match the hidden dimension")
+    return source + float(sign * alpha * coordinate_gap) * vector
+
+
+def masked_state_replacement_hook(
+    replacement: torch.Tensor,
+    *,
+    mask: torch.Tensor,
+) -> Callable:
+    """Replace arbitrary residual states at an explicit batch-position mask."""
+
+    def hook(activations: torch.Tensor, hook) -> torch.Tensor:
+        del hook
+        if tuple(mask.shape) != tuple(activations.shape[:2]):
+            raise ValueError(
+                f"replacement mask {tuple(mask.shape)} does not match activations "
+                f"{tuple(activations.shape[:2])}"
+            )
+        if tuple(replacement.shape) != tuple(activations.shape):
+            raise ValueError(
+                f"replacement tensor {tuple(replacement.shape)} does not match "
+                f"activations {tuple(activations.shape)}"
+            )
+        selected = mask.to(device=activations.device, dtype=torch.bool).unsqueeze(-1)
+        values = replacement.to(
+            device=activations.device,
+            dtype=activations.dtype,
+        )
+        return torch.where(selected, values, activations)
 
     return hook
 
@@ -157,6 +323,95 @@ def all_layer_ablation_hooks(model, direction: torch.Tensor, *, strength: float 
             ]
         )
     return hooks
+
+
+def all_layer_coordinate_clamp_hooks(
+    model,
+    direction: torch.Tensor,
+    *,
+    target_coordinates,
+    mask: torch.Tensor,
+    strength: float = 1.0,
+):
+    """Project response states onto a layerwise affine trajectory.
+
+    Full residual states are projected to the layer's anti-trait coordinate.
+    Attention and MLP outputs are additive residual writes, so their direction
+    coordinate is projected to zero. This is the exact affine analogue of the
+    global zero-coordinate refusal projection.
+    """
+
+    coordinates = torch.as_tensor(target_coordinates, dtype=torch.float32)
+    if coordinates.ndim != 1 or coordinates.numel() != model.cfg.n_layers:
+        raise ValueError(
+            "target_coordinates must contain exactly one value per model layer"
+        )
+    hooks = []
+    for layer in range(model.cfg.n_layers):
+        hooks.extend(
+            [
+                (
+                    f"blocks.{layer}.hook_resid_pre",
+                    direction_coordinate_clamp_hook(
+                        direction,
+                        target_coordinate=float(coordinates[layer].item()),
+                        strength=strength,
+                        mask=mask,
+                    ),
+                ),
+                (
+                    f"blocks.{layer}.hook_attn_out",
+                    direction_coordinate_clamp_hook(
+                        direction,
+                        target_coordinate=0.0,
+                        strength=strength,
+                        mask=mask,
+                    ),
+                ),
+                (
+                    f"blocks.{layer}.hook_mlp_out",
+                    direction_coordinate_clamp_hook(
+                        direction,
+                        target_coordinate=0.0,
+                        strength=strength,
+                        mask=mask,
+                    ),
+                ),
+            ]
+        )
+    return hooks
+
+
+def coordinate_clamp_source_transform(
+    direction: torch.Tensor,
+    *,
+    target_coordinate: float,
+    mask: torch.Tensor,
+    input_source_name: str,
+):
+    """Match EAP source caches to the affine residual intervention."""
+
+    state_projection = direction_coordinate_clamp_hook(
+        direction,
+        target_coordinate=target_coordinate,
+        mask=mask,
+    )
+    write_projection = direction_coordinate_clamp_hook(
+        direction,
+        target_coordinate=0.0,
+        mask=mask,
+    )
+
+    def transform(source_name: str, activations: torch.Tensor) -> torch.Tensor:
+        if source_name == input_source_name:
+            return state_projection(activations, None)
+        if source_name.endswith(".attn.hook_result") or source_name.endswith(
+            ".hook_mlp_out"
+        ):
+            return write_projection(activations, None)
+        return activations
+
+    return transform
 
 
 def all_layer_steering_hooks(

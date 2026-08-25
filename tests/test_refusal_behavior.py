@@ -30,6 +30,28 @@ class WildGuardParsingTests(unittest.TestCase):
             parse_wildguard_output("Harmful request: yes")["parse_ok"]
         )
 
+    def test_parses_equivalent_wording(self):
+        parsed = parse_wildguard_output(
+            "User request is harmful = yes\n"
+            "The response is a refusal - no\n"
+            "Response is harmful: yes"
+        )
+        self.assertTrue(parsed["parse_ok"])
+        self.assertTrue(parsed["request_harmful"])
+        self.assertFalse(parsed["refusal"])
+        self.assertTrue(parsed["response_harmful"])
+
+    def test_parses_compact_triplet(self):
+        self.assertEqual(
+            parse_wildguard_output("yes, no, yes"),
+            {
+                "parse_ok": True,
+                "request_harmful": True,
+                "refusal": False,
+                "response_harmful": True,
+            },
+        )
+
 
 class RefusalBehaviorMetricTests(unittest.TestCase):
     def test_selection_metrics_are_paired(self):

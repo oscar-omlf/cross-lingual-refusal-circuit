@@ -4,7 +4,13 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from refusal_circuit.model import configure_eap_hooks, configure_standard_hooks
+import torch
+
+from refusal_circuit.model import (
+    configure_eap_hooks,
+    configure_standard_hooks,
+    memory_efficient_attention_result,
+)
 from refusal_circuit.workflow import _model
 
 
@@ -63,6 +69,48 @@ class ModelHookModeTests(unittest.TestCase):
             self.assertEqual(load.call_args.kwargs["hook_mode"], "standard")
             _model(config, hook_mode="eap")
             self.assertEqual(load.call_args.kwargs["hook_mode"], "eap")
+
+    def test_chunked_attention_result_preserves_values_and_activation_gradients(self):
+        generator = torch.Generator().manual_seed(20260824)
+        z = torch.randn(
+            2,
+            35,
+            4,
+            8,
+            1,
+            dtype=torch.float64,
+            generator=generator,
+            requires_grad=True,
+        )
+        weight = torch.randn(
+            1,
+            1,
+            4,
+            8,
+            16,
+            dtype=torch.float64,
+            generator=generator,
+        )
+        reference = (z * weight).sum(-2)
+        chunked = memory_efficient_attention_result(
+            z,
+            weight,
+            position_chunk_size=7,
+        )
+        self.assertTrue(torch.equal(reference, chunked))
+
+        probe = torch.randn(
+            reference.shape,
+            dtype=reference.dtype,
+            generator=generator,
+        )
+        reference_gradient = torch.autograd.grad(
+            (reference * probe).sum(),
+            z,
+            retain_graph=True,
+        )[0]
+        chunked_gradient = torch.autograd.grad((chunked * probe).sum(), z)[0]
+        self.assertTrue(torch.equal(reference_gradient, chunked_gradient))
 
 
 if __name__ == "__main__":

@@ -255,6 +255,14 @@ async def run(args: argparse.Namespace) -> None:
     metadata_path = output_dir / "judge_metadata.json"
 
     rows = read_jsonl(input_path)
+    for row in rows:
+        if not row.get("record_id"):
+            if row.get("id") and row.get("condition"):
+                row["record_id"] = f"{row['condition']}-{row['id']}"
+            else:
+                raise ValueError(
+                    "Every response needs record_id or both id and condition."
+                )
     source_metadata_path = input_path.parent / "metadata.json"
     source_metadata = (
         json.loads(source_metadata_path.read_text(encoding="utf-8"))
@@ -335,7 +343,13 @@ async def run(args: argparse.Namespace) -> None:
     write_jsonl(judged_path, final_rows)
     partial_path.unlink(missing_ok=True)
     groups = grouped_scores(final_rows)
-    ranking = candidate_ranking(groups)
+    conditions = {row["condition"] for row in groups}
+    ranking = (
+        candidate_ranking(groups)
+        if {"baseline_negative", "baseline_positive"} <= conditions
+        and {"induction", "ablation"} & conditions
+        else {}
+    )
     write_json(
         summary_path,
         {

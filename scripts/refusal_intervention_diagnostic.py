@@ -37,8 +37,7 @@ DEFAULT_DATASET = (
 )
 DEFAULT_VECTOR_ROOT = (
     ROOT
-    / "old_results/qwen2.5-7b-instruct/polyrefuse/en"
-    / "direction_paper_kl0p2"
+    / "results/qwen2.5-7b-instruct/refusal/prompt/vector"
 )
 DEFAULT_OUTPUT = (
     ROOT
