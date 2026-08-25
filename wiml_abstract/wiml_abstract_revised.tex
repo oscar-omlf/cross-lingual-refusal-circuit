@@ -1,0 +1,54 @@
+\documentclass{article}
+
+% WiML uses double-blind review. This local style is adapted from the NeurIPS 2026 workshop template: 11-point body text, 0.75-inch margins, and no author block, line numbers, or conference footer.
+\usepackage[dblblindworkshop,nonatbib]{neurips_2026}
+\workshoptitle{Women in Machine Learning Workshop at NeurIPS 2026}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+\usepackage{microtype}
+
+\title{Towards Vector-Mediated Circuits for Refusal and Sycophancy}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+
+\noindent\textbf{Problem and approach.}
+With increasingly capable and widely deployed language models, mechanistic understanding of safety-relevant behaviors is increasingly important. Prior work has identified linear activation-space directions for refusal [1] and sycophancy [2] that causally control model behavior. It remains unclear whether these directions identify the model's natural mechanism or instead provide effective intervention coordinates. We study this distinction using a direction-conditioned circuit discovery pipeline that combines contrastive direction extraction [1,2] with edge attribution using integrated gradients (EAP-IG) [3]. In Qwen2.5-7B-Instruct, we distinguish four targets: formation of a trait coordinate, transmission of an imposed coordinate to the output, natural end-to-end computation, and mediation of behavior by the coordinate. Prompt-level directions use 256 contrastive examples per trait; the response-derived sycophancy direction uses 810 filtered response pairs. Edge scoring and circuit evaluation use separate 64-example splits, and circuits are evaluated using faithfulness, necessity, and behavioral intervention.
+
+\noindent\textbf{Results.}
+For refusal, a 1,000-edge circuit reconstructs the prompt-level refusal coordinate with 87.8\% faithfulness and 100.3\% necessity on 64 held-out prompts. On 64 development prompts, retaining this circuit preserves refusal (95.3\% versus 93.8\% normally), whereas ablating it reduces refusal to 20.3\%. This provides preliminary evidence for a compact representation circuit with a strong behavioral effect; scope-matched tests of vector mediation across all relevant positions remain ongoing.
+
+Sycophancy has distinct prompt- and response-derived directions (maximum cosine 0.490). In a free-generation pilot ($n=20$), $2\times$ prompt intervention closes 51.2\% of the positive-to-negative behavioral gap, generation intervention closes 25.9\%, and joint intervention closes 92.5\%, with judged coherence of 90.1/100. Circuit sparsity also depends strongly on what is being explained; all circuit metrics below use 64 held-out examples:
+
+{\fontsize{10pt}{11pt}\selectfont
+\noindent\makebox[\linewidth][c]{%
+\begin{tabular}{lrrr}
+\toprule
+Target & Edges & Faithfulness & Necessity \\
+\midrule
+Refusal coordinate & 1,000 & 87.8\% & 100.3\% \\
+Sycophancy prompt coordinate & 100 & 89.8\% & 96.6\% \\
+Natural sycophancy behavior & 10,000 & 16.9\% & 101.1\% \\
+Natural sycophancy behavior & 100,000 & 76.8\% & 100.2\% \\
+\bottomrule
+\end{tabular}%
+}\par}
+\vspace{-0.5em}
+
+\noindent\textbf{Interpretation.}
+These preliminary results motivate, but do not yet establish, a vector-mediated decomposition of behavior. They show that compact circuits can reconstruct selected trait coordinates and that prompt- and generation-derived sycophancy directions have complementary behavioral effects, while natural end-to-end sycophancy appears substantially less sparse. Ongoing experiments test vector mediation using interventions across prompt positions and generation, matching the scope of prior steering work, and assess whether formation and transmission circuits compose into faithful behavior circuits. We therefore present this work as a step toward linking steering directions to mechanistic circuits, rather than as a complete circuit decomposition.
+
+\vspace{-0.6em}
+{\fontsize{9.5pt}{10.5pt}\selectfont
+\noindent\textbf{References.}
+[1] A. Arditi et al. ``Refusal in Language Models Is Mediated by a Single Direction.'' arXiv:2406.11717, 2024.
+[2] Y. Chen et al. ``Persona Vectors: Monitoring and Controlling Character Traits in Language Models.'' arXiv:2507.21509, 2025.
+[3] M. Hanna et al. ``Have Faith in Faithfulness: Going Beyond Circuit Overlap When Finding Model Mechanisms.'' arXiv:2403.17806, 2024.
+}
+
+\end{abstract}
+\end{document}

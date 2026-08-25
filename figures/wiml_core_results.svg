@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="410" viewBox="0 0 700 410">
+  <rect width="100%" height="100%" fill="#f8fafc"/>
+  <rect x="10" y="10" width="680" height="390" rx="9" fill="#ffffff" stroke="#dbe3ee"/>
+<text x="26" y="35" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" fill="#172033" text-anchor="start">. Prompt and generation interventions are complementary</text>
+<text x="26" y="54" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="400" fill="#64748b" text-anchor="start">Normalized movement toward anti-sycophancy; n=20</text>
+<line x1="58" y1="338" x2="674" y2="338" stroke="#dbe3ee"/>
+<text x="51" y="342" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="400" fill="#64748b" text-anchor="end">0</text>
+<line x1="58" y1="278.5" x2="674" y2="278.5" stroke="#dbe3ee"/>
+<text x="51" y="282.5" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="400" fill="#64748b" text-anchor="end">25</text>
+<line x1="58" y1="219" x2="674" y2="219" stroke="#dbe3ee"/>
+<text x="51" y="223" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="400" fill="#64748b" text-anchor="end">50</text>
+<line x1="58" y1="159.5" x2="674" y2="159.5" stroke="#dbe3ee"/>
+<text x="51" y="163.5" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="400" fill="#64748b" text-anchor="end">75</text>
+<line x1="58" y1="100" x2="674" y2="100" stroke="#dbe3ee"/>
+<text x="51" y="104" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="400" fill="#64748b" text-anchor="end">100</text>
+<rect x="151" y="303.0854" width="36" height="34.91460000000001" rx="3" fill="#2563eb"/>
+<text x="169" y="297.0854" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#172033" text-anchor="middle">14.7%</text>
+<rect x="194" y="323.839" width="36" height="14.161000000000001" rx="3" fill="#ea580c"/>
+<text x="212" y="317.839" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#172033" text-anchor="middle">6.0%</text>
+<rect x="237" y="274.0256" width="36" height="63.9744" rx="3" fill="#7c3aed"/>
+<text x="255" y="268.0256" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#172033" text-anchor="middle">26.9%</text>
+<text x="212" y="358" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#172033" text-anchor="middle">1×</text>
+<rect x="459" y="216.1916" width="36" height="121.8084" rx="3" fill="#2563eb"/>
+<text x="477" y="210.1916" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#172033" text-anchor="middle">51.2%</text>
+<rect x="502" y="276.358" width="36" height="61.641999999999996" rx="3" fill="#ea580c"/>
+<text x="520" y="270.358" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#172033" text-anchor="middle">25.9%</text>
+<rect x="545" y="117.80240000000003" width="36" height="220.19759999999997" rx="3" fill="#7c3aed"/>
+<text x="563" y="111.80240000000003" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#172033" text-anchor="middle">92.5%</text>
+<text x="520" y="358" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#172033" text-anchor="middle">2×</text>
+<rect x="62" y="374" width="10" height="10" rx="2" fill="#2563eb"/>
+<text x="77" y="383" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="400" fill="#172033" text-anchor="start">Prompt only</text>
+<rect x="156" y="374" width="10" height="10" rx="2" fill="#ea580c"/>
+<text x="171" y="383" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="400" fill="#172033" text-anchor="start">Generation only</text>
+<rect x="272" y="374" width="10" height="10" rx="2" fill="#7c3aed"/>
+<text x="287" y="383" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="400" fill="#172033" text-anchor="start">Both</text>
+</svg>
