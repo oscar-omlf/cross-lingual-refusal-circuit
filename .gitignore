@@ -220,6 +220,10 @@ tempCodeRunnerFile.py
 /data/raw/sycophancy-eval/
 /results/
 
+# Keep project documentation local.
+*.md
+*.MD
+
 # Ruff stuff:
 .ruff_cache/
 
